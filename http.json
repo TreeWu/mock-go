@@ -1,0 +1,25 @@
+[
+  {
+    "method": "get",
+    "url": "/api/v1/users",
+    "params": {
+      "name": "name",
+      "email": "email",
+      "password": "password"
+    },
+    "req": {
+      "name": "name",
+      "email": "email",
+      "password": "password"
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "@randInt:3",
+        "name": "@randString",
+        "email": "@randString",
+        "key": "value"
+      }
+    }
+  }
+]
