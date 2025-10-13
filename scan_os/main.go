@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -130,55 +132,60 @@ func executeSSHCommand(ip string, config SSHConfig, command string) (string, err
 	session.Stderr = &stderrBuf
 
 	// 使用channel来处理超时
-	done := make(chan error, 1)
 
-	// 在goroutine中执行命令
-	go func() {
-		done <- session.Run(command)
-	}()
-
+	err = session.Run(command)
 	// 设置命令执行超时为1秒
-	select {
-	case err := <-done:
-		// 命令执行完成
-		if err != nil {
-			stderr := strings.TrimSpace(stderrBuf.String())
-			if stderr != "" {
-				return "", fmt.Errorf("command failed: %s", stderr)
-			}
-			return "", fmt.Errorf("command failed: %v", err)
-		}
-		return strings.TrimSpace(stdoutBuf.String()), nil
 
-	case <-time.After(1 * time.Second):
-		// 命令执行超时
-		session.Close() // 强制关闭session
-		client.Close()  // 强制关闭client
-		return "", fmt.Errorf("command timeout after 1 second")
+	if err != nil {
+		stderr := strings.TrimSpace(stderrBuf.String())
+		if stderr != "" {
+			return "", fmt.Errorf("command failed: %s", stderr)
+		}
+		return "", fmt.Errorf("command failed: %v", err)
 	}
+	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
 // 获取远程服务器的OS信息
 func getOSInfo(ip string, config SSHConfig, results chan<- RemoteServer) {
 
-	server := RemoteServer{IP: ip}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
 
-	// 尝试获取 /etc/os-release 内容
-	output, err := executeSSHCommand(ip, config, "cat /etc/os-release")
-	if err != nil {
-		// 如果失败，尝试其他可能的位置或命令
-		output, err = executeSSHCommand(ip, config, "cat /usr/lib/os-release")
+	resultChan := make(chan RemoteServer, 1)
+	defer close(resultChan)
+	go func() {
+
+		server := RemoteServer{IP: ip}
+
+		output, err := executeSSHCommand(ip, config, "cat /etc/os-release")
 		if err != nil {
 			server.Success = false
 			server.Error = err.Error()
-			results <- server
-			return
+		} else {
+			server.Success = true
+			server.OSInfo = output
 		}
+		select {
+		case resultChan <- server:
+		case <-ctx.Done():
+		}
+
+	}()
+
+	select {
+	case c := <-resultChan:
+		results <- c
+	case <-ctx.Done():
+		results <- RemoteServer{
+			IP:      ip,
+			OSInfo:  "",
+			Success: false,
+			Error:   "timeout",
+		}
+
 	}
 
-	server.Success = true
-	server.OSInfo = output
-	results <- server
 }
 
 // 保存结果到文件，格式为 {ip:osinfo}
@@ -192,21 +199,15 @@ func saveResultsToFile(results []RemoteServer, filename string) error {
 	writer := bufio.NewWriter(file)
 	defer writer.Flush()
 
+	ip := make(map[string]string, len(results))
+
 	for _, server := range results {
 		if server.Success {
-			// 成功获取OS信息的格式：{ip:osinfo}
-			line := fmt.Sprintf("{%s:%s}\n", server.IP, server.OSInfo)
-			if _, err := writer.WriteString(line); err != nil {
-				return err
-			}
-		} else {
-			// 失败的格式：{ip:error message}
-			line := fmt.Sprintf("{%s:%s}\n", server.IP, server.Error)
-			if _, err := writer.WriteString(line); err != nil {
-				return err
-			}
+			ip[server.IP] = server.OSInfo
 		}
 	}
+	indent, _ := json.MarshalIndent(ip, "", "  ")
+	writer.WriteString(string(indent))
 
 	return nil
 }
@@ -252,7 +253,7 @@ func main() {
 	results := make(chan RemoteServer, len(ips))
 
 	// 限制并发数，避免过多连接
-	maxConcurrent := 10
+	maxConcurrent := 20
 	semaphore := make(chan struct{}, maxConcurrent)
 
 	successCount := 0
@@ -279,9 +280,9 @@ func main() {
 					Success: false,
 					Error:   "Host unreachable",
 				}
+			} else {
+				getOSInfo(ip, config, results)
 			}
-
-			getOSInfo(ip, config, results)
 		}(ip)
 	}
 
@@ -305,7 +306,7 @@ func main() {
 	}
 
 	// 保存结果到文件
-	outputFile := "os-results.txt"
+	outputFile := "os-results.json"
 	if err := saveResultsToFile(allResults, outputFile); err != nil {
 		fmt.Printf("Error saving results: %v\n", err)
 		return
