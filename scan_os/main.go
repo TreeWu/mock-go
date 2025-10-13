@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -98,7 +99,7 @@ func parseIPRange(ipRange string) ([]string, error) {
 	return ips, nil
 }
 
-// 通过SSH执行命令
+// 通过SSH执行命令，带超时控制
 func executeSSHCommand(ip string, config SSHConfig, command string) (string, error) {
 	sshConfig := &ssh.ClientConfig{
 		User: config.Username,
@@ -122,17 +123,43 @@ func executeSSHCommand(ip string, config SSHConfig, command string) (string, err
 	}
 	defer session.Close()
 
-	output, err := session.Output(command)
-	if err != nil {
-		return "", fmt.Errorf("failed to execute command: %v", err)
-	}
+	// 创建带缓冲的管道来收集输出
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	session.Stdout = &stdoutBuf
+	session.Stderr = &stderrBuf
 
-	return string(output), nil
+	// 使用channel来处理超时
+	done := make(chan error, 1)
+
+	// 在goroutine中执行命令
+	go func() {
+		done <- session.Run(command)
+	}()
+
+	// 设置命令执行超时为1秒
+	select {
+	case err := <-done:
+		// 命令执行完成
+		if err != nil {
+			stderr := strings.TrimSpace(stderrBuf.String())
+			if stderr != "" {
+				return "", fmt.Errorf("command failed: %s", stderr)
+			}
+			return "", fmt.Errorf("command failed: %v", err)
+		}
+		return strings.TrimSpace(stdoutBuf.String()), nil
+
+	case <-time.After(1 * time.Second):
+		// 命令执行超时
+		session.Close() // 强制关闭session
+		client.Close()  // 强制关闭client
+		return "", fmt.Errorf("command timeout after 1 second")
+	}
 }
 
 // 获取远程服务器的OS信息
-func getOSInfo(ip string, config SSHConfig, wg *sync.WaitGroup, results chan<- RemoteServer) {
-	defer wg.Done()
+func getOSInfo(ip string, config SSHConfig, results chan<- RemoteServer) {
 
 	server := RemoteServer{IP: ip}
 
@@ -150,7 +177,7 @@ func getOSInfo(ip string, config SSHConfig, wg *sync.WaitGroup, results chan<- R
 	}
 
 	server.Success = true
-	server.OSInfo = strings.TrimSpace(output)
+	server.OSInfo = output
 	results <- server
 }
 
@@ -201,7 +228,7 @@ func main() {
 		Username: "root",     // 修改为你的用户名
 		Password: "password", // 修改为你的密码
 		Port:     22,         // SSH端口
-		Timeout:  10 * time.Second,
+		Timeout:  time.Second,
 	}
 
 	// 从命令行参数获取IP范围，如果没有则使用默认值
@@ -234,26 +261,27 @@ func main() {
 	// 为每个IP启动goroutine
 	for _, ip := range ips {
 		wg.Add(1)
-		semaphore <- struct{}{} // 获取信号量
 
 		go func(ip string) {
+			semaphore <- struct{}{} // 获取信号量
+
 			defer func() {
+				wg.Done()
 				<-semaphore // 释放信号量
 			}()
 
 			fmt.Printf("Checking %s...\n", ip)
 
 			// 先检查主机是否可达
-			if !isHostReachable(ip, config.Port, 3*time.Second) {
+			if !isHostReachable(ip, config.Port, time.Second) {
 				results <- RemoteServer{
 					IP:      ip,
 					Success: false,
 					Error:   "Host unreachable",
 				}
-				return
 			}
 
-			getOSInfo(ip, config, &wg, results)
+			getOSInfo(ip, config, results)
 		}(ip)
 	}
 
