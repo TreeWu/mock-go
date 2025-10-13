@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -39,7 +40,7 @@ func main() {
 	// 生成测试数据
 	fmt.Println("\n生成测试数据...")
 	testData := generateTestData(totalRecords)
-	searchTestData := generateTestData(sampleSize)
+	searchTestData := testData[:min(sampleSize, totalRecords)]
 
 	// 执行性能测试
 	var allResults []BenchmarkResult
@@ -99,6 +100,8 @@ func generateUser(id int) User {
 	user.Metadata.Department = departments[rand.Intn(len(departments))]
 	user.Metadata.Position = positions[rand.Intn(len(positions))]
 	user.Metadata.Level = levels[rand.Intn(len(levels))]
+	marshal, _ := json.Marshal(user)
+	user.UserStr = string(marshal)
 
 	return user
 }

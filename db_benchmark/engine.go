@@ -25,8 +25,8 @@ var (
 
 // 测试数据结构
 type User struct {
-	ID        int       `json:"id" bson:"id"`
-	Name      string    `json:"name" bson:"name"`
+	ID        int       `json:"id" bson:"id"`     //索引
+	Name      string    `json:"name" bson:"name"` //索引
 	Email     string    `json:"email" bson:"email"`
 	Age       int       `json:"age" bson:"age"`
 	City      string    `json:"city" bson:"city"`
@@ -34,10 +34,11 @@ type User struct {
 	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 	Tags      []string  `json:"tags" bson:"tags"`
 	Metadata  struct {
-		Department string `json:"department" bson:"department"`
+		Department string `json:"department" bson:"department"` // 索引
 		Position   string `json:"position" bson:"position"`
 		Level      string `json:"level" bson:"level"`
 	} `json:"metadata" bson:"metadata"`
+	UserStr string `json:"-" bson:"-"`
 }
 
 // 性能测试结果

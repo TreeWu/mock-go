@@ -65,7 +65,6 @@ func (e *ElasticsearchEngine) Init() {
 
 	fmt.Println("Elasticsearch 初始化成功")
 }
-
 func (e *ElasticsearchEngine) createIndex() {
 	// 检查索引是否存在
 	res, err := e.client.Indices.Exists([]string{e.config.IndexName})
@@ -83,26 +82,26 @@ func (e *ElasticsearchEngine) createIndex() {
 		return
 	}
 
-	// 创建索引映射
+	// 创建与 PostgreSQL 结构对应的索引映射
 	mapping := `{
 		"settings": {
-			"number_of_shards": 3,
-			"number_of_replicas": 1,
-			"refresh_interval": "30s"
+			"number_of_shards": 1,
+			"number_of_replicas": 0,
+			"refresh_interval": "1s",
+			"translog": {
+				"durability": "request"  // 每次请求都刷写事务日志
+			}
 		},
 		"mappings": {
 			"properties": {
-				"id": {"type": "integer"},
-				"name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-				"email": {"type": "keyword"},
+				"id": {"type": "long"},
+				"name": {"type": "text", "fielddata": true},
+				"email": {"type": "text"},
 				"age": {"type": "integer"},
-				"city": {"type": "keyword"},
+				"city": {"type": "text"},
 				"salary": {"type": "double"},
 				"created_at": {"type": "date"},
-				"tags": {"type": "keyword"},
-				"metadata.department": {"type": "keyword"},
-				"metadata.position": {"type": "keyword"},
-				"metadata.level": {"type": "keyword"}
+				"datastr": {"type": "text"}
 			}
 		}
 	}`
@@ -173,6 +172,20 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 	var buf bytes.Buffer
 
 	for _, user := range users {
+		// 将完整用户数据序列化为 JSON 字符串，模拟 PostgreSQL 的 datastr JSONB 字段
+
+		// 创建与 PostgreSQL 对应的文档结构
+		document := map[string]interface{}{
+			"id":         user.ID,
+			"name":       user.Name,
+			"email":      user.Email,
+			"age":        user.Age,
+			"city":       user.City,
+			"salary":     user.Salary,
+			"created_at": user.CreatedAt,
+			"datastr":    user.UserStr,
+		}
+
 		// 元数据行
 		meta := map[string]interface{}{
 			"index": map[string]interface{}{
@@ -190,20 +203,19 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 		buf.WriteByte('\n')
 
 		// 数据行
-		dataJSON, err := json.Marshal(user)
+		docJSON, err := json.Marshal(document)
 		if err != nil {
 			return err
 		}
 
-		buf.Write(dataJSON)
+		buf.Write(docJSON)
 		buf.WriteByte('\n')
 	}
 
 	// 执行批量插入
 	res, err := e.client.Bulk(
 		strings.NewReader(buf.String()),
-		e.client.Bulk.WithRefresh("false"),
-		//	e.client.Bulk.WithRefresh("wait_for"),
+		e.client.Bulk.WithRefresh("true"),
 	)
 	if err != nil {
 		return err
@@ -227,7 +239,6 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 
 	return nil
 }
-
 func (e *ElasticsearchEngine) ClearData() {
 	// 使用 DeleteByQuery 删除所有文档
 	query := `{"query":{"match_all":{}}}`
@@ -254,7 +265,7 @@ func (e *ElasticsearchEngine) ClearData() {
 func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 	var results []BenchmarkResult
 
-	// 测试不同的搜索场景
+	// 测试不同的搜索场景 - 与 PostgreSQL 保持一致
 	searchTests := []struct {
 		name        string
 		description string
@@ -266,7 +277,7 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 			query: map[string]interface{}{
 				"query": map[string]interface{}{
 					"term": map[string]interface{}{
-						"name.keyword": testData[0].Name,
+						"name": testData[0].Name,
 					},
 				},
 			},
@@ -311,17 +322,6 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 			},
 		},
 		{
-			name:        "部门筛选",
-			description: "按部门筛选",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"term": map[string]interface{}{
-						"metadata.department": departments[0],
-					},
-				},
-			},
-		},
-		{
 			name:        "复杂条件搜索",
 			description: "城市+年龄+薪资组合查询",
 			query: map[string]interface{}{
@@ -353,23 +353,23 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 			},
 		},
 		{
+			name:        "JSON字段搜索",
+			description: "搜索datastr JSON字段中的内容",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"match_phrase": map[string]interface{}{
+						"datastr": "技术部", // 搜索 datastr 字段中的部门信息
+					},
+				},
+			},
+		},
+		{
 			name:        "全文搜索",
 			description: "姓名全文检索",
 			query: map[string]interface{}{
 				"query": map[string]interface{}{
 					"match": map[string]interface{}{
 						"name": "用户",
-					},
-				},
-			},
-		},
-		{
-			name:        "多标签搜索",
-			description: "包含特定标签",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"term": map[string]interface{}{
-						"tags": "活跃",
 					},
 				},
 			},
@@ -433,7 +433,6 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 
 	return results
 }
-
 func (e *ElasticsearchEngine) Close() {
 	// Elasticsearch 客户端不需要显式关闭
 	fmt.Printf("%s 连接已关闭\n", e.Name())

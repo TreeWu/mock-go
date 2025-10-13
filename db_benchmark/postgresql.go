@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -50,23 +49,18 @@ func (p *PostGreSql) Init() {
 		
 		CREATE TABLE users (
 			id BIGSERIAL PRIMARY KEY,
-			data JSONB NOT NULL,
 			name TEXT,
 			email TEXT,
 			age INTEGER,
 			city TEXT,
 			salary DECIMAL,
 			created_at TIMESTAMP,
-			department TEXT
+			datastr JSONB NOT NULL
 		);
 
 		CREATE INDEX idx_users_name ON users(name);
 		CREATE INDEX idx_users_age ON users(age);
-		CREATE INDEX idx_users_city ON users(city);
-		CREATE INDEX idx_users_salary ON users(salary);
-		CREATE INDEX idx_users_department ON users(department);
-		CREATE INDEX idx_users_created_at ON users(created_at);
-		CREATE INDEX idx_users_data_gin ON users USING GIN (data);
+		CREATE INDEX idx_datastr_gin ON users USING GIN (datastr);
 	`)
 
 	if err != nil {
@@ -139,22 +133,17 @@ func (p *PostGreSql) bulkInsertPostgreSQL(users []User) error {
 	copyCount, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"users"},
-		[]string{"data", "name", "email", "age", "city", "salary", "created_at", "department"},
+		[]string{"name", "email", "age", "city", "salary", "created_at", "datastr"},
 		pgx.CopyFromSlice(len(users), func(i int) ([]interface{}, error) {
 			user := users[i]
-			userJSON, err := json.Marshal(user)
-			if err != nil {
-				return nil, err
-			}
 			return []interface{}{
-				userJSON,
 				user.Name,
 				user.Email,
 				user.Age,
 				user.City,
 				user.Salary,
 				user.CreatedAt,
-				user.Metadata.Department,
+				user.UserStr,
 			}, nil
 		}),
 	)
@@ -188,11 +177,11 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 		args []interface{}
 	}{
 		{
-			name: "精确匹配搜索",
+			name: "姓名搜索_索引",
 			sql:  "SELECT COUNT(*) FROM users WHERE name = $1",
 		},
 		{
-			name: "范围搜索",
+			name: "年龄范围搜索_索引",
 			sql:  "SELECT COUNT(*) FROM users WHERE age BETWEEN $1 AND $2",
 		},
 		{
@@ -204,12 +193,8 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 			sql:  "SELECT COUNT(*) FROM users WHERE salary BETWEEN $1 AND $2",
 		},
 		{
-			name: "部门筛选",
-			sql:  "SELECT COUNT(*) FROM users WHERE department = $1",
-		},
-		{
 			name: "JSON字段搜索",
-			sql:  "SELECT COUNT(*) FROM users WHERE data->'metadata'->>'position' = $1",
+			sql:  "SELECT COUNT(*) FROM users WHERE datastr->'metadata'->>'department' = $1",
 		},
 		{
 			name: "复杂条件搜索",
@@ -217,7 +202,7 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 		},
 		{
 			name: "全文搜索",
-			sql:  "SELECT COUNT(*) FROM users WHERE data::text LIKE $1",
+			sql:  "SELECT COUNT(*) FROM users WHERE datastr::text LIKE $1",
 		},
 	}
 
@@ -230,22 +215,20 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 		for i := 0; i < iterations; i++ {
 			var args []interface{}
 			switch test.name {
-			case "精确匹配搜索":
+			case "姓名搜索_索引":
 				args = []interface{}{testData[rand.Intn(len(testData))].Name}
-			case "范围搜索":
+			case "年龄范围搜索_索引":
 				args = []interface{}{25, 35}
 			case "城市筛选":
 				args = []interface{}{cities[rand.Intn(len(cities))]}
 			case "薪资范围搜索":
 				args = []interface{}{40000, 60000}
-			case "部门筛选":
-				args = []interface{}{departments[rand.Intn(len(departments))]}
 			case "JSON字段搜索":
-				args = []interface{}{positions[rand.Intn(len(positions))]}
+				args = []interface{}{departments[rand.Intn(len(departments))]}
 			case "复杂条件搜索":
 				args = []interface{}{cities[rand.Intn(len(cities))], 30, 50000}
 			case "全文搜索":
-				args = []interface{}{"%用户%"}
+				args = []interface{}{positions[rand.Intn(len(positions))]}
 			}
 
 			err := p.pool.QueryRow(context.Background(), test.sql, args...).Scan(&count)

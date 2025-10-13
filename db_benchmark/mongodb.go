@@ -53,10 +53,6 @@ func (m *MongoDB) Insert(users []User, batchSize int) []BenchmarkResult {
 	_, err := collection.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
 		{Keys: bson.D{{"id", 1}}},
 		{Keys: bson.D{{"name", 1}}},
-		{Keys: bson.D{{"age", 1}}},
-		{Keys: bson.D{{"city", 1}}},
-		{Keys: bson.D{{"salary", 1}}},
-		{Keys: bson.D{{"created_at", 1}}},
 		{Keys: bson.D{{"metadata.department", 1}}},
 	})
 	if err != nil {
@@ -131,14 +127,14 @@ func (m *MongoDB) Search(testData []User) []BenchmarkResult {
 		pipeline []bson.D
 	}{
 		{
-			name: "精确匹配搜索",
+			name: "姓名搜索_索引",
 			pipeline: []bson.D{
 				{{"$match", bson.D{{"name", testData[0].Name}}}},
 				{{"$count", "total"}},
 			},
 		},
 		{
-			name: "范围搜索",
+			name: "年龄范围搜索_索引",
 			pipeline: []bson.D{
 				{{"$match", bson.D{{"age", bson.D{{"$gte", 25}, {"$lte", 35}}}}}},
 				{{"$count", "total"}},
@@ -159,7 +155,7 @@ func (m *MongoDB) Search(testData []User) []BenchmarkResult {
 			},
 		},
 		{
-			name: "部门筛选",
+			name: "JSON字段搜索",
 			pipeline: []bson.D{
 				{{"$match", bson.D{{"metadata.department", departments[0]}}}},
 				{{"$count", "total"}},
