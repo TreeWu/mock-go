@@ -14,11 +14,13 @@ func NewValueHandler() *Handler {
 	gofakeit.Seed(0)
 	return &Handler{
 		fake: gofakeit.New(0),
+		r:    rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
 type Handler struct {
 	fake *gofakeit.Faker
+	r    *rand.Rand
 }
 
 // ProcessDynamicValues 处理动态值占位符
@@ -69,6 +71,7 @@ func (h *Handler) generateDynamicValue(placeholder string) interface{} {
 	case "@randInt":
 		return h.generateRandomInt(args)
 	case "@randString":
+
 		return h.generateRandomString(args)
 	case "@email":
 		return h.fake.Email()
@@ -114,25 +117,16 @@ func (h *Handler) generateRandomInt(args string) int64 {
 	return h.fake.Int64()
 }
 
-// generateRangeString 生成指定范围的字符串
-func (h *Handler) generateRangeString(args string) string {
-	if args == "" {
-		return h.fake.Word()
-	}
-
-	// 处理字符集
-	if strings.HasPrefix(args, "[") && strings.HasSuffix(args, "]") {
-		charSet := strings.Trim(args, "[]")
-		chars := strings.Split(charSet, ",")
-		if len(chars) > 0 {
-			return h.fake.RandomString(chars)
-		}
-	}
-
-	return h.fake.Word()
-}
-
-// generateRandomString 生成随机字符串
+// 生成随机字符串
 func (h *Handler) generateRandomString(args string) string {
-	return h.fake.Word()
+	var length int = 10
+	if long, err := strconv.Atoi(args); err != nil {
+		length = long
+	}
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[h.r.Intn(len(charset))]
+	}
+	return string(b)
 }

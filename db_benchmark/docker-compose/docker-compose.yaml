@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:latest  # 或选择特定版本，如 postgres:15
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: root  # 自定义用户名
+      POSTGRES_PASSWORD: 123456  # 设置一个强密码
+      POSTGRES_DB: benchmark_db  # 默认创建的数据库名
+    ports:
+      - "5432:5432"  # 主机端口:容器端口
+    restart: always
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: 123456
+    volumes:
+      - ./mongo/data:/data/db
+  rabbitmq:
+    image: rabbitmq:3.12-management  # 指定固定版本（避免镜像更新导致兼容性问题）
+    container_name: rabbitmq
+    hostname: rabbitmq-node1
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./rabbitmq/data:/var/lib/rabbitmq
+      - ./rabbitmq/logs:/var/log/rabbitmq
+      - ./rabbitmq/config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf  # 自定义配置文件（可选）
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      TZ: Asia/Shanghai
+    restart: always  # 容器异常退出时自动重启（可选）
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: benchmark_db
+      MYSQL_USER: test
+      MYSQL_PASSWORD: 123456
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: elasticsearch
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
