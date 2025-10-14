@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	totalRecords = 1000_0000
+	totalRecords = 1_000_000
 	batchSize    = 10000
 	sampleSize   = 1000
 	bigMapCount  = 500
