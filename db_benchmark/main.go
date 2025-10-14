@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	totalRecords = 1_000_000
+	totalRecords = 1_00_000
 	batchSize    = 1000
 	sampleSize   = 1000
 )
@@ -116,6 +116,9 @@ func printResults(results []BenchmarkResult, engines []BenchmarkEngine) {
 	fmt.Println(strings.Repeat("-", 100))
 
 	for _, result := range results {
+		if result.Operation == Operation_Insert {
+			continue
+		}
 		fmt.Printf("%-20s %-15s %-12v %-10d %-15.2f\n",
 			result.Operation,
 			result.Database,

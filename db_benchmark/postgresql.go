@@ -6,7 +6,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"log"
-	"math/rand"
 	"time"
 )
 
@@ -216,19 +215,19 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 			var args []interface{}
 			switch test.name {
 			case "姓名搜索_索引":
-				args = []interface{}{testData[rand.Intn(len(testData))].Name}
+				args = []interface{}{testData[0].Name}
 			case "年龄范围搜索_索引":
 				args = []interface{}{25, 35}
 			case "城市筛选":
-				args = []interface{}{cities[rand.Intn(len(cities))]}
+				args = []interface{}{cities[0]}
 			case "薪资范围搜索":
 				args = []interface{}{40000, 60000}
 			case "JSON字段搜索":
-				args = []interface{}{departments[rand.Intn(len(departments))]}
+				args = []interface{}{departments[0]}
 			case "复杂条件搜索":
-				args = []interface{}{cities[rand.Intn(len(cities))], 30, 50000}
+				args = []interface{}{cities[0], 30, 50000}
 			case "全文搜索":
-				args = []interface{}{positions[rand.Intn(len(positions))]}
+				args = []interface{}{"用户"}
 			}
 
 			err := p.pool.QueryRow(context.Background(), test.sql, args...).Scan(&count)

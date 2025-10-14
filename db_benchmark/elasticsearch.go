@@ -321,6 +321,18 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 				},
 			},
 		},
+
+		{
+			name:        "JSON字段搜索",
+			description: "搜索datastr JSON字段中的内容",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"match_phrase": map[string]interface{}{
+						"datastr": departments[0], // 搜索 datastr 字段中的部门信息
+					},
+				},
+			},
+		},
 		{
 			name:        "复杂条件搜索",
 			description: "城市+年龄+薪资组合查询",
@@ -353,23 +365,12 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 			},
 		},
 		{
-			name:        "JSON字段搜索",
-			description: "搜索datastr JSON字段中的内容",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"match_phrase": map[string]interface{}{
-						"datastr": "技术部", // 搜索 datastr 字段中的部门信息
-					},
-				},
-			},
-		},
-		{
 			name:        "全文搜索",
-			description: "姓名全文检索",
+			description: "全文搜索",
 			query: map[string]interface{}{
 				"query": map[string]interface{}{
 					"match": map[string]interface{}{
-						"name": "用户",
+						"datastr": "用户",
 					},
 				},
 			},
@@ -434,8 +435,6 @@ func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
 	return results
 }
 func (e *ElasticsearchEngine) Close() {
-	// Elasticsearch 客户端不需要显式关闭
-	fmt.Printf("%s 连接已关闭\n", e.Name())
 }
 
 func (e *ElasticsearchEngine) Name() string {
