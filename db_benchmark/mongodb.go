@@ -86,8 +86,8 @@ func (m *MongoDB) Insert(users []User, batchSize int) []BenchmarkResult {
 		}
 		results = append(results, batchResult)
 
-		if i%100000 == 0 {
-			fmt.Printf("MongoDB 已插入 %d 条记录\n", batchEnd)
+		if i%1000 == 0 {
+			fmt.Printf("%s 已插入 %d 条记录\n", m.Name(), batchEnd)
 		}
 	}
 
@@ -100,8 +100,8 @@ func (m *MongoDB) Insert(users []User, batchSize int) []BenchmarkResult {
 		Throughput: float64(total) / totalDuration.Seconds(),
 	}
 
-	fmt.Printf("MongoDB 插入完成: %d 条记录, 耗时: %v, 吞吐量: %.2f 记录/秒\n",
-		total, totalDuration, totalResult.Throughput)
+	fmt.Printf("%s 插入完成: %d 条记录, 耗时: %v, 吞吐量: %.2f 记录/秒\n",
+		m.Name(), total, totalDuration, totalResult.Throughput)
 
 	return append(results, totalResult)
 }

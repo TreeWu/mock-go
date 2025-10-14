@@ -59,7 +59,7 @@ func (p *PostGreSql) Init() {
 
 		CREATE INDEX idx_users_name ON users(name);
 		CREATE INDEX idx_users_age ON users(age);
-		CREATE INDEX idx_datastr_gin ON users USING GIN (datastr);
+		CREATE INDEX idx_users_datastr_gin ON users USING GIN (datastr);
 	`)
 
 	if err != nil {
@@ -97,8 +97,8 @@ func (p *PostGreSql) Insert(data []User, batchSize int) []BenchmarkResult {
 		}
 		results = append(results, batchResult)
 
-		if i%100000 == 0 {
-			fmt.Printf("PostgreSQL 已插入 %d 条记录\n", batchEnd)
+		if i%1000 == 0 {
+			fmt.Printf("%s 已插入 %d 条记录\n", p.Name(), batchEnd)
 		}
 	}
 
@@ -135,6 +135,7 @@ func (p *PostGreSql) bulkInsertPostgreSQL(users []User) error {
 		[]string{"name", "email", "age", "city", "salary", "created_at", "datastr"},
 		pgx.CopyFromSlice(len(users), func(i int) ([]interface{}, error) {
 			user := users[i]
+
 			return []interface{}{
 				user.Name,
 				user.Email,
@@ -142,7 +143,7 @@ func (p *PostGreSql) bulkInsertPostgreSQL(users []User) error {
 				user.City,
 				user.Salary,
 				user.CreatedAt,
-				user.UserStr,
+				[]byte(user.UserStr),
 			}, nil
 		}),
 	)
@@ -201,7 +202,7 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 		},
 		{
 			name: "全文搜索",
-			sql:  "SELECT COUNT(*) FROM users WHERE datastr::text LIKE $1",
+			sql:  "SELECT COUNT(*) FROM users WHERE datastr::jsonb::text LIKE $1",
 		},
 	}
 
@@ -227,7 +228,7 @@ func (p *PostGreSql) Search(testData []User) []BenchmarkResult {
 			case "复杂条件搜索":
 				args = []interface{}{cities[0], 30, 50000}
 			case "全文搜索":
-				args = []interface{}{"用户"}
+				args = []interface{}{"%用户%"}
 			}
 
 			err := p.pool.QueryRow(context.Background(), test.sql, args...).Scan(&count)

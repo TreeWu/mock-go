@@ -81,16 +81,16 @@ func (e *ElasticsearchEngine) createIndex() {
 		}
 		return
 	}
-
+	//"translog": {
+	//	"durability": "request"  // 每次请求都刷写事务日志
+	//}
 	// 创建与 PostgreSQL 结构对应的索引映射
 	mapping := `{
 		"settings": {
 			"number_of_shards": 1,
 			"number_of_replicas": 0,
-			"refresh_interval": "1s",
-			"translog": {
-				"durability": "request"  // 每次请求都刷写事务日志
-			}
+			"refresh_interval": "1s"
+			
 		},
 		"mappings": {
 			"properties": {
@@ -148,7 +148,7 @@ func (e *ElasticsearchEngine) Insert(data []User, batchSize int) []BenchmarkResu
 		}
 		results = append(results, batchResult)
 
-		if i%100000 == 0 {
+		if i%1000 == 0 {
 			fmt.Printf("%s 已插入 %d 条记录\n", e.Name(), batchEnd)
 		}
 	}
@@ -183,7 +183,7 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 			"city":       user.City,
 			"salary":     user.Salary,
 			"created_at": user.CreatedAt,
-			"datastr":    user.UserStr,
+			"datastr":    string(user.UserStr),
 		}
 
 		// 元数据行

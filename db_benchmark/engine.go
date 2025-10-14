@@ -25,20 +25,16 @@ var (
 
 // 测试数据结构
 type User struct {
-	ID        int       `json:"id" bson:"id"`     //索引
-	Name      string    `json:"name" bson:"name"` //索引
-	Email     string    `json:"email" bson:"email"`
-	Age       int       `json:"age" bson:"age"`
-	City      string    `json:"city" bson:"city"`
-	Salary    float64   `json:"salary" bson:"salary"`
-	CreatedAt time.Time `json:"created_at" bson:"created_at"`
-	Tags      []string  `json:"tags" bson:"tags"`
-	Metadata  struct {
-		Department string `json:"department" bson:"department"` // 索引
-		Position   string `json:"position" bson:"position"`
-		Level      string `json:"level" bson:"level"`
-	} `json:"metadata" bson:"metadata"`
-	UserStr string `json:"-" bson:"-"`
+	ID        int                    `json:"id" bson:"id"`     //索引
+	Name      string                 `json:"name" bson:"name"` //索引
+	Email     string                 `json:"email" bson:"email"`
+	Age       int                    `json:"age" bson:"age"`
+	City      string                 `json:"city" bson:"city"`
+	Salary    float64                `json:"salary" bson:"salary"`
+	CreatedAt time.Time              `json:"created_at" bson:"created_at"`
+	Tags      []string               `json:"tags" bson:"tags"`
+	Metadata  map[string]interface{} `json:"metadata" bson:"metadata"`
+	UserStr   []byte                 `json:"-" bson:"-"`
 }
 
 // 性能测试结果
@@ -48,4 +44,5 @@ type BenchmarkResult struct {
 	Duration   time.Duration
 	Records    int
 	Throughput float64 // 记录数/秒
+	Mark       string
 }
