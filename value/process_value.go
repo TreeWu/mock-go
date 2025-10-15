@@ -1,11 +1,12 @@
 package value
 
 import (
-	"github.com/brianvoe/gofakeit/v6"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/brianvoe/gofakeit/v6"
 )
 
 func NewValueHandler() *Handler {
@@ -71,8 +72,7 @@ func (h *Handler) generateDynamicValue(placeholder string) interface{} {
 	case "@randInt":
 		return h.generateRandomInt(args)
 	case "@randString":
-
-		return h.generateRandomString(args)
+		return h.GenerateRandomString(args)
 	case "@email":
 		return h.fake.Email()
 	case "@name":
@@ -118,7 +118,7 @@ func (h *Handler) generateRandomInt(args string) int64 {
 }
 
 // 生成随机字符串
-func (h *Handler) generateRandomString(args string) string {
+func (h *Handler) GenerateRandomString(args string) string {
 	var length int = 10
 	if long, err := strconv.Atoi(args); err != nil {
 		length = long

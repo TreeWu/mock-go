@@ -14,115 +14,17 @@ import (
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 )
 
-// ElasticsearchEngine Elasticsearch 实现
+var _ BenchmarkEngine = (*ElasticsearchEngine)(nil)
+
+// ElasticsearchEngine 结构体
 type ElasticsearchEngine struct {
-	client *elasticsearch.Client
-	config ElasticsearchConfig
-	name   string
+	client    *elasticsearch.Client
+	config    *ElasticsearchConfig
+	indexName string
 }
 
-type ElasticsearchConfig struct {
-	Addresses []string
-	Username  string
-	Password  string
-	IndexName string
-}
+func (e *ElasticsearchEngine) Insert(data []Resource, batchSize int) []BenchmarkResult {
 
-func NewElasticsearch(config ElasticsearchConfig) *ElasticsearchEngine {
-	return &ElasticsearchEngine{
-		config: config,
-		name:   "Elasticsearch",
-	}
-}
-
-func (e *ElasticsearchEngine) Init() {
-	cfg := elasticsearch.Config{
-		Addresses: e.config.Addresses,
-		Username:  e.config.Username,
-		Password:  e.config.Password,
-	}
-
-	client, err := elasticsearch.NewClient(cfg)
-	if err != nil {
-		log.Fatalf("创建 Elasticsearch 客户端失败: %v", err)
-	}
-
-	e.client = client
-
-	// 检查连接
-	res, err := e.client.Ping()
-	if err != nil {
-		log.Fatalf("Elasticsearch 连接失败: %v", err)
-	}
-	defer res.Body.Close()
-
-	if res.IsError() {
-		log.Fatalf("Elasticsearch 连接异常: %s", res.String())
-	}
-
-	// 创建索引
-	e.createIndex()
-
-	fmt.Println("Elasticsearch 初始化成功")
-}
-func (e *ElasticsearchEngine) createIndex() {
-	// 检查索引是否存在
-	res, err := e.client.Indices.Exists([]string{e.config.IndexName})
-	if err != nil {
-		log.Fatalf("检查索引存在失败: %v", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode == 200 {
-		// 索引已存在，清理数据
-		_, err := e.client.DeleteByQuery([]string{e.config.IndexName}, strings.NewReader(`{"query":{"match_all":{}}}`))
-		if err != nil {
-			log.Printf("清理现有索引数据失败: %v", err)
-		}
-		return
-	}
-	//"translog": {
-	//	"durability": "request"  // 每次请求都刷写事务日志
-	//}
-	// 创建与 PostgreSQL 结构对应的索引映射
-	mapping := `{
-		"settings": {
-			"number_of_shards": 1,
-			"number_of_replicas": 0,
-			"refresh_interval": "1s"
-			
-		},
-		"mappings": {
-			"properties": {
-				"id": {"type": "long"},
-				"name": {"type": "text", "fielddata": true},
-				"email": {"type": "text"},
-				"age": {"type": "integer"},
-				"city": {"type": "text"},
-				"salary": {"type": "double"},
-				"created_at": {"type": "date"},
-				"datastr": {"type": "text"}
-			}
-		}
-	}`
-
-	req := esapi.IndicesCreateRequest{
-		Index: e.config.IndexName,
-		Body:  strings.NewReader(mapping),
-	}
-
-	res, err = req.Do(context.Background(), e.client)
-	if err != nil {
-		log.Fatalf("创建索引失败: %v", err)
-	}
-	defer res.Body.Close()
-
-	if res.IsError() {
-		log.Fatalf("创建索引错误: %s", res.String())
-	}
-}
-
-func (e *ElasticsearchEngine) Insert(data []User, batchSize int) []BenchmarkResult {
 	var results []BenchmarkResult
 	start := time.Now()
 
@@ -132,7 +34,7 @@ func (e *ElasticsearchEngine) Insert(data []User, batchSize int) []BenchmarkResu
 		batch := data[i:batchEnd]
 
 		// 使用 Bulk API 进行批量插入
-		err := e.bulkInsert(batch)
+		err := e.BulkInsert(batch)
 		if err != nil {
 			log.Printf("Elasticsearch 批量插入失败: %v", err)
 			continue
@@ -168,29 +70,151 @@ func (e *ElasticsearchEngine) Insert(data []User, batchSize int) []BenchmarkResu
 	return append(results, totalResult)
 }
 
-func (e *ElasticsearchEngine) bulkInsert(users []User) error {
+// ElasticsearchConfig 配置
+type ElasticsearchConfig struct {
+	Addresses   []string
+	IndexName   string
+	Username    string
+	Password    string
+	WithRefresh string
+}
+
+func (e *ElasticsearchEngine) Init() {
+	cfg := elasticsearch.Config{
+		Addresses: e.config.Addresses,
+		Username:  e.config.Username,
+		Password:  e.config.Password,
+	}
+
+	client, err := elasticsearch.NewClient(cfg)
+	if err != nil {
+		log.Fatalf("创建 Elasticsearch 客户端失败: %v", err)
+	}
+
+	e.client = client
+
+	// 检查连接
+	res, err := e.client.Ping()
+	if err != nil {
+		log.Fatalf("Elasticsearch 连接失败: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		log.Fatalf("Elasticsearch 连接异常: %s", res.String())
+	}
+
+	// 创建索引
+	e.createIndex()
+
+	fmt.Println("Elasticsearch 初始化成功")
+}
+
+// NewElasticsearchEngine 创建新的引擎实例
+func NewElasticsearchEngine(config *ElasticsearchConfig) (*ElasticsearchEngine, error) {
+	cfg := elasticsearch.Config{
+		Addresses: config.Addresses,
+		Username:  config.Username,
+		Password:  config.Password,
+	}
+
+	client, err := elasticsearch.NewClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	engine := &ElasticsearchEngine{
+		client:    client,
+		config:    config,
+		indexName: config.IndexName,
+	}
+
+	// 创建索引
+	engine.createIndex()
+	return engine, nil
+}
+
+// createIndex 创建索引
+func (e *ElasticsearchEngine) createIndex() {
+	// 检查索引是否存在
+	res, err := e.client.Indices.Exists([]string{e.indexName})
+	if err != nil {
+		log.Fatalf("检查索引存在失败: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == 200 {
+		// 索引已存在，清理数据
+		_, err := e.client.DeleteByQuery([]string{e.indexName}, strings.NewReader(`{"query":{"match_all":{}}}`))
+		if err != nil {
+			log.Printf("清理现有索引数据失败: %v", err)
+		}
+		return
+	}
+
+	// 索引映射配置
+	mapping := `{
+		"settings": {
+			"number_of_shards": 1,
+			"number_of_replicas": 0,
+			"refresh_interval": "1s"
+		},
+		"mappings": {
+			"properties": {
+				"resource_id": {"type": "keyword"},
+				"parent_id": {"type": "keyword"},
+				"version": {"type": "integer"},
+				"deleted": {"type": "integer"},
+				"attributes": {
+					"type": "object",
+					"dynamic": true
+				},
+			}
+		}
+	}`
+
+	req := esapi.IndicesCreateRequest{
+		Index: e.indexName,
+		Body:  strings.NewReader(mapping),
+	}
+
+	res, err = req.Do(context.Background(), e.client)
+	if err != nil {
+		log.Fatalf("创建索引失败: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		log.Fatalf("创建索引错误: %s", res.String())
+	}
+}
+
+// BulkInsert 批量插入数据
+func (e *ElasticsearchEngine) BulkInsert(resources []Resource) error {
 	var buf bytes.Buffer
 
-	for _, user := range users {
-		// 将完整用户数据序列化为 JSON 字符串，模拟 PostgreSQL 的 datastr JSONB 字段
-
-		// 创建与 PostgreSQL 对应的文档结构
-		document := map[string]interface{}{
-			"id":         user.ID,
-			"name":       user.Name,
-			"email":      user.Email,
-			"age":        user.Age,
-			"city":       user.City,
-			"salary":     user.Salary,
-			"created_at": user.CreatedAt,
-			"datastr":    string(user.UserStr),
+	for _, resource := range resources {
+		// 解析Attributes JSON字符串
+		var attributes map[string]interface{}
+		if err := json.Unmarshal([]byte(resource.Attributes), &attributes); err != nil {
+			log.Printf("解析Attributes失败: %v", err)
+			continue
 		}
 
-		// 元数据行
+		// 构建文档
+		document := map[string]interface{}{
+			"resource_id": resource.ResourceId,
+			"parent_id":   resource.ParentId,
+			"version":     resource.Version,
+			"deleted":     resource.Deleted,
+			"attributes":  attributes,
+		}
+
+		// 构建批量请求
 		meta := map[string]interface{}{
 			"index": map[string]interface{}{
-				"_index": e.config.IndexName,
-				"_id":    user.ID,
+				"_index": e.indexName,
+				"_id":    resource.ResourceId,
 			},
 		}
 
@@ -199,15 +223,13 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 			return err
 		}
 
-		buf.Write(metaJSON)
-		buf.WriteByte('\n')
-
-		// 数据行
 		docJSON, err := json.Marshal(document)
 		if err != nil {
 			return err
 		}
 
+		buf.Write(metaJSON)
+		buf.WriteByte('\n')
 		buf.Write(docJSON)
 		buf.WriteByte('\n')
 	}
@@ -215,7 +237,7 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 	// 执行批量插入
 	res, err := e.client.Bulk(
 		strings.NewReader(buf.String()),
-		e.client.Bulk.WithRefresh("true"),
+		e.client.Bulk.WithRefresh(e.config.WithRefresh),
 	)
 	if err != nil {
 		return err
@@ -226,19 +248,183 @@ func (e *ElasticsearchEngine) bulkInsert(users []User) error {
 		return fmt.Errorf("批量插入错误: %s", res.String())
 	}
 
-	// 解析响应检查错误
-	var response map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
-		return err
-	}
-
-	if response["errors"] != nil && response["errors"].(bool) {
-		// 记录错误但不停止执行
-		log.Printf("批量插入中存在部分错误: %v", response)
-	}
-
 	return nil
 }
+
+// Search 执行搜索测试，多次执行取平均值
+func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
+	var results []BenchmarkResult
+
+	// 定义测试用例
+	testCases := []struct {
+		name        string
+		description string
+		query       map[string]interface{}
+	}{
+		{
+			name:        "resource_id精准匹配",
+			description: "根据resource_id精确匹配特定资源",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"term": map[string]interface{}{
+						"resource_id": test[0].ResourceId,
+					},
+				},
+			},
+		},
+		{
+			name:        "resource_id模糊匹配",
+			description: "使用通配符匹配resource_id，如%0_1_0%",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"wildcard": map[string]interface{}{
+						"resource_id": "*" + test[0].ResourceId + "*",
+					},
+				},
+			},
+		},
+		{
+			name:        "attributes.ci_type精准匹配",
+			description: "根据attributes中的ci_type字段精确匹配",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"term": map[string]interface{}{
+						"attributes.ci_type": 2,
+					},
+				},
+			},
+		},
+		{
+			name:        "attributes.ci_type包含多个值",
+			description: "匹配attributes.ci_type在指定数组中的资源",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"terms": map[string]interface{}{
+						"attributes.ci_type": []int{2, 3, 4},
+					},
+				},
+			},
+		},
+		{
+			name:        "attributes.ci_type不包含多个值",
+			description: "匹配attributes.ci_type不在指定数组中的资源",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"bool": map[string]interface{}{
+						"must_not": map[string]interface{}{
+							"terms": map[string]interface{}{
+								"attributes.ci_type": []int{2, 3, 4},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:        "全文匹配",
+			description: "在整个文档中进行全文搜索",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"multi_match": map[string]interface{}{
+						"query":  "test",
+						"fields": []string{"resource_id", "parent_id", "attributes.*", "tom"},
+					},
+				},
+			},
+		},
+	}
+
+	// 执行每个测试用例，多次执行取平均值
+	for _, tc := range testCases {
+		const executionCount = 5 // 每个测试用例执行5次
+		var totalDuration time.Duration
+		var totalRecord int
+		var lastError error
+		var successCount int
+
+		// 执行多次搜索
+		for i := 0; i < executionCount; i++ {
+			start := time.Now()
+
+			queryJSON, err := json.Marshal(tc.query)
+			if err != nil {
+				lastError = err
+				continue
+			}
+
+			res, err := e.client.Search(
+				e.client.Search.WithIndex(e.indexName),
+				e.client.Search.WithBody(strings.NewReader(string(queryJSON))),
+			)
+
+			duration := time.Since(start)
+
+			if err != nil {
+				lastError = err
+				continue
+			}
+
+			var searchResult map[string]interface{}
+			if err := json.NewDecoder(res.Body).Decode(&searchResult); err != nil {
+				lastError = err
+				res.Body.Close()
+				continue
+			}
+
+			res.Body.Close()
+
+			// 提取命中数量
+			var hitCount int
+			if hits, ok := searchResult["hits"].(map[string]interface{}); ok {
+				if total, ok := hits["total"].(map[string]interface{}); ok {
+					if value, ok := total["value"].(float64); ok {
+						hitCount = int(value)
+					}
+				}
+			}
+
+			totalDuration += duration
+			totalRecord += hitCount
+			successCount++
+		}
+
+		// 计算平均值
+		var avgDuration time.Duration
+		var avgRecords int
+		var throughput float64
+		mark := "成功"
+
+		if successCount > 0 {
+			avgDuration = totalDuration / time.Duration(successCount)
+			avgRecords = totalRecord / successCount
+			if avgDuration > 0 {
+				throughput = float64(avgRecords) / avgDuration.Seconds()
+			}
+		} else {
+			mark = fmt.Sprintf("所有执行都失败: %v", lastError)
+		}
+
+		// 添加成功率信息
+		if successCount < executionCount {
+			mark = fmt.Sprintf("部分成功 (%d/%d)", successCount, executionCount)
+			if lastError != nil {
+				mark += fmt.Sprintf("，最后错误: %v", lastError)
+			}
+		}
+
+		results = append(results, BenchmarkResult{
+			Operation:  tc.name,
+			Database:   e.Name(),
+			Duration:   avgDuration,
+			Records:    avgRecords,
+			Throughput: throughput,
+			Mark:       mark,
+		})
+	}
+
+	return results
+}
+
 func (e *ElasticsearchEngine) ClearData() {
 	// 使用 DeleteByQuery 删除所有文档
 	query := `{"query":{"match_all":{}}}`
@@ -262,181 +448,9 @@ func (e *ElasticsearchEngine) ClearData() {
 	fmt.Printf("%s 数据清理完成\n", e.Name())
 }
 
-func (e *ElasticsearchEngine) Search(testData []User) []BenchmarkResult {
-	var results []BenchmarkResult
-
-	// 测试不同的搜索场景 - 与 PostgreSQL 保持一致
-	searchTests := []struct {
-		name        string
-		description string
-		query       map[string]interface{}
-	}{
-		{
-			name:        "精确匹配搜索",
-			description: "按姓名精确匹配",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"term": map[string]interface{}{
-						"name": testData[0].Name,
-					},
-				},
-			},
-		},
-		{
-			name:        "范围搜索",
-			description: "年龄在25-35岁之间",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"range": map[string]interface{}{
-						"age": map[string]interface{}{
-							"gte": 25,
-							"lte": 35,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:        "城市筛选",
-			description: "按城市筛选",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"term": map[string]interface{}{
-						"city": cities[0],
-					},
-				},
-			},
-		},
-		{
-			name:        "薪资范围搜索",
-			description: "薪资在40000-60000之间",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"range": map[string]interface{}{
-						"salary": map[string]interface{}{
-							"gte": 40000,
-							"lte": 60000,
-						},
-					},
-				},
-			},
-		},
-
-		{
-			name:        "JSON字段搜索",
-			description: "搜索datastr JSON字段中的内容",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"match_phrase": map[string]interface{}{
-						"datastr": departments[0], // 搜索 datastr 字段中的部门信息
-					},
-				},
-			},
-		},
-		{
-			name:        "复杂条件搜索",
-			description: "城市+年龄+薪资组合查询",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"bool": map[string]interface{}{
-						"must": []map[string]interface{}{
-							{
-								"term": map[string]interface{}{
-									"city": cities[0],
-								},
-							},
-							{
-								"range": map[string]interface{}{
-									"age": map[string]interface{}{
-										"gt": 30,
-									},
-								},
-							},
-							{
-								"range": map[string]interface{}{
-									"salary": map[string]interface{}{
-										"gt": 50000,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name:        "全文搜索",
-			description: "全文搜索",
-			query: map[string]interface{}{
-				"query": map[string]interface{}{
-					"match": map[string]interface{}{
-						"datastr": "用户",
-					},
-				},
-			},
-		},
-	}
-
-	for _, test := range searchTests {
-		start := time.Now()
-		var count int64
-
-		// 执行多次取平均值
-		iterations := 10
-		for i := 0; i < iterations; i++ {
-			// 序列化查询
-			queryJSON, err := json.Marshal(test.query)
-			if err != nil {
-				log.Printf("%s 序列化查询失败: %v", e.Name(), err)
-				continue
-			}
-
-			// 执行搜索
-			res, err := e.client.Count(
-				e.client.Count.WithIndex(e.config.IndexName),
-				e.client.Count.WithBody(strings.NewReader(string(queryJSON))),
-			)
-			if err != nil {
-				log.Printf("%s 搜索失败: %v", e.Name(), err)
-				continue
-			}
-			defer res.Body.Close()
-
-			if res.IsError() {
-				log.Printf("%s 搜索错误: %s", e.Name(), res.String())
-				continue
-			}
-
-			// 解析结果
-			var result map[string]interface{}
-			if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
-				log.Printf("%s 解析结果失败: %v", e.Name(), err)
-				continue
-			}
-
-			if cnt, ok := result["count"].(float64); ok {
-				count = int64(cnt)
-			}
-		}
-
-		duration := time.Since(start) / time.Duration(iterations)
-		result := BenchmarkResult{
-			Operation:  test.name,
-			Database:   e.Name(),
-			Duration:   duration,
-			Records:    int(count),
-			Throughput: 1.0 / duration.Seconds(), // 查询/秒
-		}
-		results = append(results, result)
-
-		fmt.Printf("%s %s: 耗时 %v, 匹配记录: %d\n", e.Name(), test.name, duration, count)
-	}
-
-	return results
-}
 func (e *ElasticsearchEngine) Close() {
 }
 
 func (e *ElasticsearchEngine) Name() string {
-	return e.name
+	return "Elasticsearch"
 }

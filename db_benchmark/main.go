@@ -4,19 +4,23 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/TreeWu/mock-go/value"
 )
 
 var (
-	totalRecords = 1_000_000
-	batchSize    = 10000
-	sampleSize   = 1000
-	bigMapCount  = 500
+	totalRecords = 100
+	batchSize    = 100
+	sampleSize   = 10
+	bigMapCount  = 1000000
 	bigMap       map[string]interface{}
 	bigMapInsert = false
+	valHandler   = value.NewValueHandler()
 )
 
 func init() {
@@ -24,30 +28,67 @@ func init() {
 	for i := range bigMapCount {
 		bigMap[fmt.Sprintf("key%d", i)] = fmt.Sprintf("value%d", i)
 	}
+	marshal, _ := json.MarshalIndent(bigMap, "", "  ")
+	fmt.Println("bigmap zise mb", len(marshal)/1024/1024)
 }
 
 func main() {
 
 	fmt.Println("开始数据库性能对比测试...")
 	fmt.Printf("测试数据量: %d 条记录\n", totalRecords)
-
-	// 生成测试数据
 	fmt.Println("\n生成测试数据...")
-	testData := generateTestData(totalRecords, false)
+	var testData []Resource
+	var fileName string
+	if bigMapInsert {
+		fileName = fmt.Sprintf("bigmap_%d.json", totalRecords)
+	} else {
+		fileName = fmt.Sprintf("%d.json", totalRecords)
+	}
+
+	if bs, err := os.ReadFile(fileName); err == nil {
+		err := json.Unmarshal(bs, &testData)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		for i := 0; i*batchSize < totalRecords; i++ {
+			for i2 := 1; i2 <= batchSize; i2++ {
+				testData = append(testData, generateResource(i, i2, bigMapInsert))
+			}
+		}
+		marshal, _ := json.Marshal(testData)
+		os.WriteFile(fileName, marshal, os.ModePerm)
+	}
+
 	searchTestData := testData[:min(sampleSize, totalRecords)]
 
+	es, _ := NewElasticsearchEngine(&ElasticsearchConfig{
+		Addresses:   []string{"http://localhost:9200"},
+		Username:    "", // 如果有认证
+		Password:    "", // 如果有认证
+		IndexName:   "users_benchmark",
+		WithRefresh: "true",
+	})
+	pg, _ := NewPostgresqlEngine(&PostgresqlConfig{
+		Host:            "localhost",
+		Port:            5432,
+		User:            "root",
+		Password:        "123456",
+		DBName:          "benchmark_db",
+		TableName:       "benchmark_db",
+		SSLMode:         "disable",
+		MaxConns:        10,
+		MinConns:        10,
+		MaxConnLifetime: time.Minute,
+	})
+
 	// 初始化数据库引擎
-	engines := []BenchmarkEngine{
-		// NewMySQL("root:123456@tcp(localhost:3306)/?charset=utf8mb4&parseTime=true"),
-		NewPostgreSQL("postgres://root:123456@localhost:5432/benchmark_db?sslmode=disable"),
-		NewMongoDB("mongodb://root:123456@localhost:27017", "benchmark_db"),
-		NewElasticsearch(ElasticsearchConfig{
-			Addresses: []string{"http://localhost:9200"},
-			Username:  "", // 如果有认证
-			Password:  "", // 如果有认证
-			IndexName: "users_benchmark",
-		}),
-	}
+	var engines []BenchmarkEngine
+
+	engines = append(engines,
+		es,
+		NewMongoDB("mongodb://root:123456@localhost:27017", "benchmark_db", "resource"),
+		pg)
 
 	// 初始化所有引擎
 	for _, engine := range engines {
@@ -77,54 +118,6 @@ func main() {
 	printResults(allResults, engines)
 }
 
-// 辅助函数
-func generateTestData(count int, insert bool) []User {
-	rand.Seed(time.Now().UnixNano())
-	var users []User
-
-	for i := 0; i < count; i++ {
-		user := generateUser(i+1, insert)
-		users = append(users, user)
-	}
-
-	return users
-}
-
-func generateUser(id int, bigM bool) User {
-	rand.Seed(time.Now().UnixNano() + int64(id))
-
-	user := User{
-		ID:        id,
-		Name:      fmt.Sprintf("用户%d", id),
-		Email:     fmt.Sprintf("user%d@example.com", id),
-		Age:       rand.Intn(50) + 18,
-		City:      cities[rand.Intn(len(cities))],
-		Salary:    float64(rand.Intn(50000) + 30000),
-		CreatedAt: time.Now().Add(-time.Duration(rand.Intn(365)) * 24 * time.Hour),
-	}
-
-	// 添加标签
-	tagCount := rand.Intn(3) + 1
-	for j := 0; j < tagCount; j++ {
-		user.Tags = append(user.Tags, tagsPool[rand.Intn(len(tagsPool))])
-	}
-
-	m := make(map[string]interface{})
-
-	// 增加大数据map
-	if bigM {
-		m = bigMap
-	}
-	m["department"] = departments[rand.Intn(len(departments))]
-	m["position"] = positions[rand.Intn(len(positions))]
-	m["level"] = levels[rand.Intn(len(levels))]
-	user.Metadata = m
-	marshal, _ := json.Marshal(user)
-	user.UserStr = marshal
-
-	return user
-}
-
 func printResults(results []BenchmarkResult, engines []BenchmarkEngine) {
 
 	var bs bytes.Buffer
@@ -140,7 +133,7 @@ func printResults(results []BenchmarkResult, engines []BenchmarkEngine) {
 
 	for _, result := range results {
 		if !strings.Contains(result.Operation, "插入") {
-			bs.WriteString(fmt.Sprintf("%-15s %-15s 耗时 %15v, 匹配记录: %d\n", result.Database, result.Operation, result.Duration, result.Records))
+			bs.WriteString(fmt.Sprintf("%-15s %-30s 耗时 %-15v,匹配记录: %d\n", result.Database, result.Operation, result.Duration, result.Records))
 		}
 	}
 
@@ -232,4 +225,49 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func generateResource(pid, id int, bigM bool) Resource {
+
+	res := Resource{
+		ResourceId: fmt.Sprintf("%d_%d", pid, id),
+		ParentId:   fmt.Sprintf("%d", pid),
+		Version:    0,
+		Deleted:    0,
+		Attributes: "{}",
+	}
+
+	m := make(map[string]interface{})
+	m["id"] = fmt.Sprintf("%d", id)
+	m["resource_id"] = fmt.Sprintf("%d_%d", pid, id)
+	m["parent_id"] = fmt.Sprintf("%d", pid)
+	m["location"] = "@randString"
+	m["input_param"] = "@randString"
+	m["name"] = "tom"
+	m["value_type"] = "@randString"
+	m["spot_type"] = "@randString"
+	m["unit"] = "@randString"
+	m["precision"] = "@randString"
+	m["codec"] = "@randString"
+	m["codecex"] = "@randString"
+	m["filter"] = "@randString"
+	m["compressor"] = "@randString"
+	m["mapper"] = "@randString"
+	m["converter"] = "@randString"
+	m["storag"] = "@randString"
+	m["alias"] = "@randString"
+	m["ci_type"] = ci_type[rand.Intn(len(ci_type))]
+	m["grou"] = "@randString"
+	m["data_source"] = "@randString"
+	m["privilege"] = "@randString"
+	m["aggregato"] = "@randString"
+	m["ci_version"] = "@randString"
+	if bigMapInsert {
+		m["bigmap"] = bigMap
+	}
+	v := valHandler.ProcessDynamicValues(m)
+
+	bs, _ := json.Marshal(v)
+	res.Attributes = string(bs)
+	return res
 }

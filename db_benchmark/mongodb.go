@@ -13,19 +13,21 @@ import (
 var _ BenchmarkEngine = (*MongoDB)(nil)
 
 type MongoDB struct {
-	db     string
-	uri    string
-	client *mongo.Client
+	db         string
+	uri        string
+	client     *mongo.Client
+	Collection string
 }
 
 func (m *MongoDB) Name() string {
 	return "MongoDB"
 }
 
-func NewMongoDB(uri, db string) BenchmarkEngine {
+func NewMongoDB(uri, db, Collection string) BenchmarkEngine {
 	return &MongoDB{
-		uri: uri,
-		db:  db,
+		uri:        uri,
+		db:         db,
+		Collection: Collection,
 	}
 }
 
@@ -42,32 +44,46 @@ func (m *MongoDB) Init() {
 	}
 	fmt.Println("MongoDB 连接成功")
 	m.client = client
-}
+	collection := m.client.Database(m.db).Collection(m.Collection)
 
-func (m *MongoDB) Insert(users []User, batchSize int) []BenchmarkResult {
-	var results []BenchmarkResult
-	collection := m.client.Database(m.db).Collection("users")
-	start := time.Now()
-
-	// 创建索引
-	_, err := collection.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
-		{Keys: bson.D{{"id", 1}}},
-		{Keys: bson.D{{"name", 1}}},
-		{Keys: bson.D{{"metadata.department", 1}}},
+	_, err = collection.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+		{Keys: bson.D{{"resource_id", 1}}},
+		{
+			Keys: bson.D{
+				{"resource_id", "text"},
+				{"parent_id", "text"},
+				{"attributes", "text"},
+			},
+		},
 	})
 	if err != nil {
 		log.Printf("创建 MongoDB 索引失败: %v", err)
 	}
-	total := len(users)
 
-	for i := 0; i < total; i += batchSize {
+}
+
+func (m *MongoDB) Insert(data []Resource, batchSize int) []BenchmarkResult {
+	var results []BenchmarkResult
+	start := time.Now()
+
+	collection := m.client.Database(m.db).Collection(m.Collection)
+
+	for i := 0; i < len(data); i += batchSize {
 		batchStart := time.Now()
-		batchEnd := min(i+batchSize, total)
+		batchEnd := min(i+batchSize, len(data))
+		batch := data[i:batchEnd]
 
-		batch := users[i:batchEnd]
-		var documents = make([]interface{}, len(batch))
-		for i2 := range batch {
-			documents[i2] = batch[i2]
+		// 将Resource转换为BSON文档
+		var documents []interface{}
+		for _, resource := range batch {
+			doc := bson.M{
+				"resource_id": resource.ResourceId,
+				"parent_id":   resource.ParentId,
+				"version":     resource.Version,
+				"deleted":     resource.Deleted,
+				"attributes":  resource.Attributes,
+			}
+			documents = append(documents, doc)
 		}
 
 		_, err := collection.InsertMany(context.Background(), documents)
@@ -96,110 +112,107 @@ func (m *MongoDB) Insert(users []User, batchSize int) []BenchmarkResult {
 		Operation:  Operation_InsertTotal,
 		Database:   m.Name(),
 		Duration:   totalDuration,
-		Records:    total,
-		Throughput: float64(total) / totalDuration.Seconds(),
+		Records:    len(data),
+		Throughput: float64(len(data)) / totalDuration.Seconds(),
 	}
 
 	fmt.Printf("%s 插入完成: %d 条记录, 耗时: %v, 吞吐量: %.2f 记录/秒\n",
-		m.Name(), total, totalDuration, totalResult.Throughput)
+		m.Name(), len(data), totalDuration, totalResult.Throughput)
 
 	return append(results, totalResult)
 }
 
 func (m *MongoDB) ClearData() {
-	fmt.Println("MongoDB,清理测试数据...")
-
-	// 清理 MongoDB
-	collection := m.client.Database(m.db).Collection("users")
-	err := collection.Drop(context.Background())
+	collection := m.client.Database(m.db).Collection(m.Collection)
+	_, err := collection.DeleteMany(context.Background(), bson.D{})
 	if err != nil {
-		log.Printf("清理 MongoDB 数据失败: %v", err)
+		log.Printf("MongoDB 清理数据失败: %v", err)
 	}
 }
 
-func (m *MongoDB) Search(testData []User) []BenchmarkResult {
+func (m *MongoDB) Search(test []Resource) []BenchmarkResult {
 	var results []BenchmarkResult
-	collection := m.client.Database(m.db).Collection("users")
+	collection := m.client.Database(m.db).Collection(m.Collection)
 
-	// 测试不同的搜索场景
 	searchTests := []struct {
 		name     string
 		pipeline []bson.D
 	}{
 		{
-			name: "姓名搜索_索引",
+			name: "resource_id精准匹配",
 			pipeline: []bson.D{
-				{{"$match", bson.D{{"name", testData[0].Name}}}},
+				{{"$match", bson.D{{"resource_id", test[0].ResourceId}}}},
 				{{"$count", "total"}},
 			},
 		},
 		{
-			name: "年龄范围搜索_索引",
+			name: "resource_id模糊匹配",
 			pipeline: []bson.D{
-				{{"$match", bson.D{{"age", bson.D{{"$gte", 25}, {"$lte", 35}}}}}},
+				{{"$match", bson.D{{"resource_id", bson.D{{"$regex", test[0].ResourceId}, {"$options", "i"}}}}}},
 				{{"$count", "total"}},
 			},
 		},
 		{
-			name: "城市筛选",
+			name: "attributes.ci_type精准匹配",
 			pipeline: []bson.D{
-				{{"$match", bson.D{{"city", cities[0]}}}},
+				{{"$match", bson.D{{"attributes.ci_type", 2}}}},
 				{{"$count", "total"}},
 			},
 		},
 		{
-			name: "薪资范围搜索",
+			name: "attributes.ci_type包含多个值",
 			pipeline: []bson.D{
-				{{"$match", bson.D{{"salary", bson.D{{"$gte", 40000}, {"$lte", 60000}}}}}},
+				{{"$match", bson.D{{"attributes.ci_type", bson.D{{"$in", []int{2, 3, 4}}}}}}},
 				{{"$count", "total"}},
 			},
 		},
 		{
-			name: "JSON字段搜索",
+			name: "attributes.ci_type不包含多个值",
 			pipeline: []bson.D{
-				{{"$match", bson.D{{"metadata.department", departments[0]}}}},
+				{{"$match", bson.D{{"attributes.ci_type", bson.D{{"$nin", []int{2, 3, 4}}}}}}},
 				{{"$count", "total"}},
 			},
 		},
 		{
-			name: "复杂条件搜索",
+			name: "全文匹配",
 			pipeline: []bson.D{
 				{{"$match", bson.D{
-					{"city", cities[0]},
-					{"age", bson.D{{"$gt", 30}}},
-					{"salary", bson.D{{"$gt", 50000}}},
-				}}},
-				{{"$count", "total"}},
-			},
-		},
-		{
-			name: "全文搜索",
-			pipeline: []bson.D{
-				{{"$match", bson.D{{"name", bson.D{{"$regex", "用户"}}}}}},
+					{"$or", []bson.D{
+						{{"resource_id", bson.D{{"$regex", "test"}, {"$options", "i"}}}},
+						{{"parent_id", bson.D{{"$regex", "test"}, {"$options", "i"}}}},
+						{{"attributes", bson.D{{"$regex", "test"}, {"$options", "i"}}}},
+					}}},
+				}},
 				{{"$count", "total"}},
 			},
 		},
 	}
 
-	for _, test := range searchTests {
-		start := time.Now()
-		var count int64
+	for _, searchTest := range searchTests {
+		const executionCount = 5
+		var totalDuration time.Duration
+		var totalRecords int64
+		var successCount int
+		var lastError error
 
-		// 执行多次取平均值
-		iterations := 10
-		for i := 0; i < iterations; i++ {
-			cursor, err := collection.Aggregate(context.Background(), test.pipeline)
+		for i := 0; i < executionCount; i++ {
+			start := time.Now()
+
+			cursor, err := collection.Aggregate(context.Background(), searchTest.pipeline)
 			if err != nil {
-				log.Printf("MongoDB 搜索失败: %v", err)
+				lastError = err
 				continue
 			}
 
 			var result []bson.M
 			if err = cursor.All(context.Background(), &result); err != nil {
-				log.Printf("MongoDB 解析结果失败: %v", err)
+				lastError = err
+				cursor.Close(context.Background())
 				continue
 			}
 
+			// 提取计数
+			var count int64
 			if len(result) > 0 {
 				if totalVal, ok := result[0]["total"]; ok {
 					switch v := totalVal.(type) {
@@ -214,20 +227,50 @@ func (m *MongoDB) Search(testData []User) []BenchmarkResult {
 					}
 				}
 			}
+
 			cursor.Close(context.Background())
+			duration := time.Since(start)
+
+			totalDuration += duration
+			totalRecords += count
+			successCount++
 		}
 
-		duration := time.Since(start) / time.Duration(iterations)
+		// 计算平均值
+		var avgDuration time.Duration
+		var avgRecords int64
+		var throughput float64
+		mark := "成功"
+
+		if successCount > 0 {
+			avgDuration = totalDuration / time.Duration(successCount)
+			avgRecords = totalRecords / int64(successCount)
+			if avgDuration > 0 {
+				throughput = float64(avgRecords) / avgDuration.Seconds()
+			}
+		} else {
+			mark = fmt.Sprintf("所有执行都失败: %v", lastError)
+		}
+
+		if successCount < executionCount {
+			mark = fmt.Sprintf("部分成功 (%d/%d)", successCount, executionCount)
+			if lastError != nil {
+				mark += fmt.Sprintf("，最后错误: %v", lastError)
+			}
+		}
+
 		result := BenchmarkResult{
-			Operation:  test.name,
+			Operation:  searchTest.name,
 			Database:   m.Name(),
-			Duration:   duration,
-			Records:    int(count),
-			Throughput: 1.0 / duration.Seconds(), // 查询/秒
+			Duration:   avgDuration,
+			Records:    int(avgRecords),
+			Throughput: throughput,
+			Mark:       mark,
 		}
 		results = append(results, result)
 
-		fmt.Printf("MongoDB %s: 耗时 %v, 匹配记录: %d\n", test.name, duration, count)
+		fmt.Printf("%-12s | %-30s | %-18v | %-10d | %s\n",
+			m.Name(), searchTest.name, avgDuration, int(avgRecords), mark)
 	}
 
 	return results
