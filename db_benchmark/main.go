@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	totalRecords = 100
-	batchSize    = 100
+	totalRecords = 100000
+	batchSize    = 1000
 	sampleSize   = 10
-	bigMapCount  = 1000000
+	bigMapCount  = 500000
 	bigMap       map[string]interface{}
 	bigMapInsert = false
 	valHandler   = value.NewValueHandler()
@@ -59,6 +59,13 @@ func main() {
 		marshal, _ := json.Marshal(testData)
 		os.WriteFile(fileName, marshal, os.ModePerm)
 	}
+	for i := range testData {
+		resource := testData[i]
+		bs, _ := json.Marshal(resource.Attributes)
+
+		resource.AttributeStr = string(bs)
+		testData[i] = resource
+	}
 
 	searchTestData := testData[:min(sampleSize, totalRecords)]
 
@@ -67,7 +74,7 @@ func main() {
 		Username:    "", // 如果有认证
 		Password:    "", // 如果有认证
 		IndexName:   "users_benchmark",
-		WithRefresh: "true",
+		WithRefresh: "false",
 	})
 	pg, _ := NewPostgresqlEngine(&PostgresqlConfig{
 		Host:            "localhost",
@@ -82,13 +89,15 @@ func main() {
 		MaxConnLifetime: time.Minute,
 	})
 
+	mongoDB := NewMongoDB("mongodb://root:123456@localhost:27017", "benchmark_db", "resource")
+
+	log.Println(es.Name(), pg.Name(), mongoDB.Name())
 	// 初始化数据库引擎
 	var engines []BenchmarkEngine
 
 	engines = append(engines,
 		es,
-		NewMongoDB("mongodb://root:123456@localhost:27017", "benchmark_db", "resource"),
-		pg)
+	)
 
 	// 初始化所有引擎
 	for _, engine := range engines {
@@ -102,14 +111,11 @@ func main() {
 	for _, engine := range engines {
 		fmt.Printf("\n=== %s 测试 ===\n", engine.Name())
 
-		// 清理数据
 		engine.ClearData()
 
-		// 插入测试
 		insertResults := engine.Insert(testData, batchSize)
 		allResults = append(allResults, insertResults...)
 
-		// 搜索测试
 		searchResults := engine.Search(searchTestData)
 		allResults = append(allResults, searchResults...)
 	}
@@ -132,8 +138,9 @@ func printResults(results []BenchmarkResult, engines []BenchmarkEngine) {
 	bs.WriteString("\n")
 
 	for _, result := range results {
-		if !strings.Contains(result.Operation, "插入") {
-			bs.WriteString(fmt.Sprintf("%-15s %-30s 耗时 %-15v,匹配记录: %d\n", result.Database, result.Operation, result.Duration, result.Records))
+		if result.Operation == Operation_InsertTotal {
+			bs.WriteString(fmt.Sprintf("%15s 插入完成: %15d 条记录, 耗时: %10v, 吞吐量: %.2f 记录/秒\n",
+				result.Database, result.Records, result.Duration, result.Throughput))
 		}
 	}
 
@@ -141,9 +148,8 @@ func printResults(results []BenchmarkResult, engines []BenchmarkEngine) {
 	bs.WriteString("\n")
 
 	for _, result := range results {
-		if result.Operation == Operation_InsertTotal {
-			bs.WriteString(fmt.Sprintf("%15s 插入完成: %15d 条记录, 耗时: %10v, 吞吐量: %.2f 记录/秒\n",
-				result.Database, result.Records, result.Duration, result.Throughput))
+		if !strings.Contains(result.Operation, "插入") {
+			bs.WriteString(fmt.Sprintf("%-15s %-30s 耗时 %-15v,匹配记录: %d\n", result.Database, result.Operation, result.Duration, result.Records))
 		}
 	}
 
@@ -234,14 +240,14 @@ func generateResource(pid, id int, bigM bool) Resource {
 		ParentId:   fmt.Sprintf("%d", pid),
 		Version:    0,
 		Deleted:    0,
-		Attributes: "{}",
+		Attributes: make(map[string]interface{}),
 	}
 
 	m := make(map[string]interface{})
 	m["id"] = fmt.Sprintf("%d", id)
 	m["resource_id"] = fmt.Sprintf("%d_%d", pid, id)
 	m["parent_id"] = fmt.Sprintf("%d", pid)
-	m["location"] = "@randString"
+	m["location"] = fmt.Sprintf("project_root/%d/%d", pid, id)
 	m["input_param"] = "@randString"
 	m["name"] = "tom"
 	m["value_type"] = "@randString"
@@ -265,9 +271,6 @@ func generateResource(pid, id int, bigM bool) Resource {
 	if bigMapInsert {
 		m["bigmap"] = bigMap
 	}
-	v := valHandler.ProcessDynamicValues(m)
-
-	bs, _ := json.Marshal(v)
-	res.Attributes = string(bs)
+	res.Attributes = valHandler.ProcessDynamicMap(m)
 	return res
 }

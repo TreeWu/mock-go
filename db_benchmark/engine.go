@@ -12,12 +12,6 @@ type BenchmarkEngine interface {
 }
 
 var (
-	cities      = []string{"北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "西安"}
-	departments = []string{"技术部", "销售部", "市场部", "人事部", "财务部", "产品部"}
-	positions   = []string{"工程师", "经理", "总监", "专员", "助理", "主管"}
-	levels      = []string{"初级", "中级", "高级", "资深"}
-	tagsPool    = []string{"活跃", "新用户", "VIP", "优质", "普通", "沉默", "流失"}
-
 	ci_type = []int{0, 1, 2, 3, 4, 5, 6, 7}
 
 	Operation_Insert      = "插入"
@@ -40,11 +34,12 @@ type User struct {
 }
 
 type Resource struct {
-	ResourceId string `json:"resource_id" bson:"resource_id"`
-	ParentId   string `json:"parent_id" bson:"parent_id"`
-	Version    int    `json:"version" bson:"version"`
-	Deleted    int    `json:"deleted" bson:"deleted"`
-	Attributes string `json:"attributes" bson:"attributes"`
+	ResourceId   string                 `json:"resource_id" bson:"resource_id"`
+	ParentId     string                 `json:"parent_id" bson:"parent_id"`
+	Version      int                    `json:"version" bson:"version"`
+	Deleted      int                    `json:"deleted" bson:"deleted"`
+	Attributes   map[string]interface{} `json:"attributes" bson:"attributes"`
+	AttributeStr string                 `json:"-" bson:"-"`
 }
 
 // 性能测试结果

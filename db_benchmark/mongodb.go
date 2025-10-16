@@ -31,6 +31,10 @@ func NewMongoDB(uri, db, Collection string) BenchmarkEngine {
 	}
 }
 
+func (m *MongoDB) Test() {
+
+}
+
 func (m *MongoDB) Init() {
 	clientOptions := options.Client().ApplyURI(m.uri)
 	client, err := mongo.Connect(context.Background(), clientOptions)
@@ -44,9 +48,14 @@ func (m *MongoDB) Init() {
 	}
 	fmt.Println("MongoDB 连接成功")
 	m.client = client
+
+}
+
+func (m *MongoDB) Insert(data []Resource, batchSize int) []BenchmarkResult {
+
 	collection := m.client.Database(m.db).Collection(m.Collection)
 
-	_, err = collection.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := collection.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
 		{Keys: bson.D{{"resource_id", 1}}},
 		{
 			Keys: bson.D{
@@ -59,14 +68,10 @@ func (m *MongoDB) Init() {
 	if err != nil {
 		log.Printf("创建 MongoDB 索引失败: %v", err)
 	}
-
-}
-
-func (m *MongoDB) Insert(data []Resource, batchSize int) []BenchmarkResult {
 	var results []BenchmarkResult
 	start := time.Now()
 
-	collection := m.client.Database(m.db).Collection(m.Collection)
+	collection = m.client.Database(m.db).Collection(m.Collection)
 
 	for i := 0; i < len(data); i += batchSize {
 		batchStart := time.Now()
@@ -102,7 +107,7 @@ func (m *MongoDB) Insert(data []Resource, batchSize int) []BenchmarkResult {
 		}
 		results = append(results, batchResult)
 
-		if i%1000 == 0 {
+		if i%batchSize == 0 {
 			fmt.Printf("%s 已插入 %d 条记录\n", m.Name(), batchEnd)
 		}
 	}
@@ -174,15 +179,9 @@ func (m *MongoDB) Search(test []Resource) []BenchmarkResult {
 			},
 		},
 		{
-			name: "全文匹配",
+			name: "attributes.location like 搜索",
 			pipeline: []bson.D{
-				{{"$match", bson.D{
-					{"$or", []bson.D{
-						{{"resource_id", bson.D{{"$regex", "test"}, {"$options", "i"}}}},
-						{{"parent_id", bson.D{{"$regex", "test"}, {"$options", "i"}}}},
-						{{"attributes", bson.D{{"$regex", "test"}, {"$options", "i"}}}},
-					}}},
-				}},
+				{{"$match", bson.D{{"attributes.location", bson.D{{"$regex", "project_root"}, {"$options", "i"}}}}}},
 				{{"$count", "total"}},
 			},
 		},

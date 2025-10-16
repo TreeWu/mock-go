@@ -21,6 +21,11 @@ type PostgresqlEngine struct {
 }
 
 func (p *PostgresqlEngine) Insert(data []Resource, batchSize int) []BenchmarkResult {
+	// 创建表
+	if err := p.createTable(); err != nil {
+		log.Fatalf("创建表失败: %v", err)
+	}
+
 	var results []BenchmarkResult
 	start := time.Now()
 
@@ -105,11 +110,6 @@ func (p *PostgresqlEngine) Init() {
 	}
 
 	p.pool = pool
-
-	// 创建表
-	if err := p.createTable(); err != nil {
-		log.Fatalf("创建表失败: %v", err)
-	}
 
 	fmt.Println("PostgreSQL 初始化成功")
 }
@@ -217,7 +217,7 @@ func (p *PostgresqlEngine) BulkInsert(resources []Resource) error {
 				resource.ParentId,
 				resource.Version,
 				resource.Deleted,
-				[]byte(resource.Attributes), // JSONB 字段直接存储
+				[]byte(resource.AttributeStr),
 			}, nil
 		}),
 	)
@@ -286,18 +286,12 @@ func (p *PostgresqlEngine) Search(test []Resource) []BenchmarkResult {
 			},
 		},
 		{
-			name:        "全文匹配",
-			description: "在整个文档中进行全文搜索",
+			name:        "attributes.location like 搜索",
+			description: "attributes.location like 搜索",
 			queryFunc: func() (string, []interface{}) {
-				// 使用 PostgreSQL 的全文搜索功能
-				return fmt.Sprintf(`
-					SELECT COUNT(*) FROM %s 
-					WHERE to_tsvector('english', 
-						COALESCE(resource_id, '') || ' ' || 
-						COALESCE(parent_id, '') || ' ' || 
-						COALESCE(attributes::text, '')
-					) @@ to_tsquery('english', $1)
-				`, p.tableName), []interface{}{"test"}
+				return fmt.Sprintf(`SELECT COUNT(*)
+FROM %s 
+WHERE attributes->>'location' ILIKE $1`, p.tableName), []interface{}{"%project_root%"}
 			},
 		},
 	}

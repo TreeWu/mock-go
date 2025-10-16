@@ -31,7 +31,7 @@ func (h *Handler) ProcessDynamicValues(body interface{}) interface{} {
 	case string:
 		return h.generateDynamicValue(v)
 	case map[string]interface{}:
-		return h.processDynamicMap(v)
+		return h.ProcessDynamicMap(v)
 	case []interface{}:
 		return h.processArray(v)
 	default:
@@ -39,7 +39,7 @@ func (h *Handler) ProcessDynamicValues(body interface{}) interface{} {
 	}
 }
 
-func (h *Handler) processDynamicMap(mapValue map[string]interface{}) map[string]interface{} {
+func (h *Handler) ProcessDynamicMap(mapValue map[string]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, v := range mapValue {
 		result[k] = h.ProcessDynamicValues(v)

@@ -25,6 +25,9 @@ type ElasticsearchEngine struct {
 
 func (e *ElasticsearchEngine) Insert(data []Resource, batchSize int) []BenchmarkResult {
 
+	// 创建索引
+	e.createIndex()
+
 	var results []BenchmarkResult
 	start := time.Now()
 
@@ -103,9 +106,6 @@ func (e *ElasticsearchEngine) Init() {
 	if res.IsError() {
 		log.Fatalf("Elasticsearch 连接异常: %s", res.String())
 	}
-
-	// 创建索引
-	e.createIndex()
 
 	fmt.Println("Elasticsearch 初始化成功")
 }
@@ -194,12 +194,6 @@ func (e *ElasticsearchEngine) BulkInsert(resources []Resource) error {
 	var buf bytes.Buffer
 
 	for _, resource := range resources {
-		// 解析Attributes JSON字符串
-		var attributes map[string]interface{}
-		if err := json.Unmarshal([]byte(resource.Attributes), &attributes); err != nil {
-			log.Printf("解析Attributes失败: %v", err)
-			continue
-		}
 
 		// 构建文档
 		document := map[string]interface{}{
@@ -207,7 +201,7 @@ func (e *ElasticsearchEngine) BulkInsert(resources []Resource) error {
 			"parent_id":   resource.ParentId,
 			"version":     resource.Version,
 			"deleted":     resource.Deleted,
-			"attributes":  attributes,
+			"attributes":  resource.Attributes,
 		}
 
 		// 构建批量请求
@@ -321,13 +315,12 @@ func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 			},
 		},
 		{
-			name:        "全文匹配",
-			description: "在整个文档中进行全文搜索",
+			name:        "attributes.location like 搜索",
+			description: "attributes.location like 搜索",
 			query: map[string]interface{}{
 				"query": map[string]interface{}{
-					"multi_match": map[string]interface{}{
-						"query":  "test",
-						"fields": []string{"resource_id", "parent_id", "attributes.*", "tom"},
+					"wildcard": map[string]interface{}{
+						"attributes.location": "*project_root*",
 					},
 				},
 			},
@@ -355,6 +348,7 @@ func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 			res, err := e.client.Search(
 				e.client.Search.WithIndex(e.indexName),
 				e.client.Search.WithBody(strings.NewReader(string(queryJSON))),
+				e.client.Search.WithSize(1_000),
 			)
 
 			duration := time.Since(start)
