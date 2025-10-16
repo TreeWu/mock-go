@@ -38,32 +38,19 @@ func main() {
 	fmt.Printf("测试数据量: %d 条记录\n", totalRecords)
 	fmt.Println("\n生成测试数据...")
 	var testData []Resource
-	var fileName string
-	if bigMapInsert {
-		fileName = fmt.Sprintf("bigmap_%d.json", totalRecords)
-	} else {
-		fileName = fmt.Sprintf("%d.json", totalRecords)
+
+	for i := 0; i*batchSize < totalRecords; i++ {
+		for i2 := 1; i2 <= batchSize; i2++ {
+			testData = append(testData, generateResource(i, i2, bigMapInsert))
+		}
 	}
 
-	if bs, err := os.ReadFile(fileName); err == nil {
-		err := json.Unmarshal(bs, &testData)
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		for i := 0; i*batchSize < totalRecords; i++ {
-			for i2 := 1; i2 <= batchSize; i2++ {
-				testData = append(testData, generateResource(i, i2, bigMapInsert))
-			}
-		}
-		marshal, _ := json.Marshal(testData)
-		os.WriteFile(fileName, marshal, os.ModePerm)
-	}
 	for i := range testData {
 		resource := testData[i]
-		bs, _ := json.Marshal(resource.Attributes)
+		resource.AttributeStr, _ = json.Marshal(resource.Attributes)
 
-		resource.AttributeStr = string(bs)
+		resource.ResourceStr, _ = json.Marshal(resource)
+
 		testData[i] = resource
 	}
 
