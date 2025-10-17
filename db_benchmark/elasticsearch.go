@@ -3,7 +3,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/elastic/go-elasticsearch/v7"
@@ -11,8 +10,6 @@ import (
 	"log"
 	"strings"
 	"time"
-
-	"github.com/elastic/go-elasticsearch/v7/esapi"
 )
 
 var _ BenchmarkEngine = (*ElasticsearchEngine)(nil)
@@ -125,57 +122,36 @@ func NewElasticsearchEngine(config *ElasticsearchConfig) (*ElasticsearchEngine, 
 
 // createIndex 创建索引
 func (e *ElasticsearchEngine) createIndex() {
-	// 检查索引是否存在
-	res, err := e.client.Indices.Exists([]string{e.indexName})
-	if err != nil {
-		log.Fatalf("检查索引存在失败: %v", err)
-	}
-	defer res.Body.Close()
 
-	if res.StatusCode == 200 {
-		// 索引已存在，清理数据
-		_, err := e.client.DeleteByQuery([]string{e.indexName}, strings.NewReader(`{"query":{"match_all":{}}}`))
-		if err != nil {
-			log.Printf("清理现有索引数据失败: %v", err)
-		}
-		return
-	}
+	// delete old index if exists (for testing convenience)
+	e.client.Indices.Delete([]string{e.indexName})
 
-	// 索引映射配置
-	mapping := `{
-  "settings": {
-    "number_of_shards": 1,
-    "number_of_replicas": 0,
-    "refresh_interval": "1s"
-  },
-  "mappings": {
-    "properties": {
-      "resource_id": { "type": "keyword" },
-      "parent_id":   { "type": "keyword" },
-      "version":     { "type": "integer" },
-      "deleted":     { "type": "integer" },
-      "attributes": {
-        "type": "object",
-        "dynamic": true
-      }
-    }
-  }
-}`
-
-	req := esapi.IndicesCreateRequest{
-		Index: e.indexName,
-		Body:  strings.NewReader(mapping),
+	settings := map[string]interface{}{
+		"settings": map[string]interface{}{
+			"index.mapping.total_fields.limit": 20000,
+		},
+		"mappings": map[string]interface{}{
+			"properties": map[string]interface{}{
+				"resource_id": map[string]interface{}{"type": "keyword"},
+				"parent_id":   map[string]interface{}{"type": "keyword"},
+				"version":     map[string]interface{}{"type": "integer"},
+				"deleted":     map[string]interface{}{"type": "integer"},
+				"attributes": map[string]interface{}{
+					"type":    "object",
+					"dynamic": true, // 允许自动生成子字段
+				},
+			},
+		},
 	}
 
-	res, err = req.Do(context.Background(), e.client)
+	body, _ := json.Marshal(settings)
+	res, err := e.client.Indices.Create(e.indexName, e.client.Indices.Create.WithBody(bytes.NewReader(body)))
 	if err != nil {
 		log.Fatalf("创建索引失败: %v", err)
 	}
 	defer res.Body.Close()
+	fmt.Println("index created with high field limit (20000)")
 
-	if res.IsError() {
-		log.Fatalf("创建索引错误: %s", res.String())
-	}
 }
 
 // BulkInsert 批量插入数据
@@ -183,15 +159,6 @@ func (e *ElasticsearchEngine) BulkInsert(resources []Resource) error {
 	var buf bytes.Buffer
 
 	for _, resource := range resources {
-
-		// 构建文档
-		document := map[string]interface{}{
-			"resource_id": resource.ResourceId,
-			"parent_id":   resource.ParentId,
-			"version":     resource.Version,
-			"deleted":     resource.Deleted,
-			"attributes":  resource.Attributes,
-		}
 
 		// 构建批量请求
 		meta := map[string]interface{}{
@@ -206,14 +173,9 @@ func (e *ElasticsearchEngine) BulkInsert(resources []Resource) error {
 			return err
 		}
 
-		docJSON, err := json.Marshal(document)
-		if err != nil {
-			return err
-		}
-
 		buf.Write(metaJSON)
 		buf.WriteByte('\n')
-		buf.Write(docJSON)
+		buf.Write(resource.ResourceStr)
 		buf.WriteByte('\n')
 	}
 
@@ -421,14 +383,12 @@ func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 }
 
 func (e *ElasticsearchEngine) ClearData() {
-	// 使用 DeleteByQuery 删除所有文档
-	query := `{"query":{"match_all":{}}}`
 
-	res, err := e.client.DeleteByQuery(
-		[]string{e.config.IndexName},
-		strings.NewReader(query),
-		e.client.DeleteByQuery.WithRefresh(true),
-	)
+	res, err := e.client.Indices.Delete([]string{e.config.IndexName})
+	if err != nil {
+		return
+	}
+
 	if err != nil {
 		log.Printf("%s 清理数据失败: %v", e.Name(), err)
 		return

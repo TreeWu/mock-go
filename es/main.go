@@ -30,7 +30,7 @@ func must(err error) {
 
 func newESClient() *elastic.Client {
 	cfg := elastic.Config{
-		Addresses: []string{getEnv("ES_URL", "http://192.168.123.201:9200")},
+		Addresses: []string{getEnv("ES_URL", "http://127.0.0.1:9200")},
 	}
 	if u := os.Getenv("ES_USERNAME"); u != "" {
 		cfg.Username = u
@@ -298,7 +298,7 @@ func main() {
 	fmt.Printf("generating Attributes ~%d MB ...\n", targetMB)
 	attrs := generateLargeAttributes(targetBytes)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		attrs["resource_id"] = fmt.Sprintf("res-%d", i)
 		resDoc := Resource{
 			ResourceId: fmt.Sprintf("res-large-%3d", i),
@@ -308,7 +308,6 @@ func main() {
 			Attributes: attrs,
 		}
 		// index the document
-		fmt.Println("indexing large document ...")
 		indexDocument(es, indexName, resDoc.ResourceId, resDoc)
 	}
 

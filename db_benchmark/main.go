@@ -17,7 +17,7 @@ var (
 	totalRecords = 10
 	batchSize    = 1
 	sampleSize   = 1000
-	bigMapCount  = 300000
+	bigmapSize   = 10 * 1024 * 1024 // 10m
 	bigMap       map[string]interface{}
 	bigMapInsert = true
 	valHandler   = value.NewValueHandler()
@@ -27,12 +27,7 @@ func init() {
 	if !bigMapInsert {
 		return
 	}
-	bigMap = make(map[string]interface{})
-	for i := range bigMapCount {
-		bigMap[fmt.Sprintf("key%d", i)] = fmt.Sprintf("value%d", i)
-	}
-	marshal, _ := json.MarshalIndent(bigMap, "", "  ")
-	fmt.Println("bigmap zise mb", len(marshal)/1024/1024)
+	bigMap = generateLargeAttributes(bigmapSize)
 }
 
 func main() {
@@ -51,9 +46,7 @@ func main() {
 	for i := range testData {
 		resource := testData[i]
 		resource.AttributeStr, _ = json.Marshal(resource.Attributes)
-
 		resource.ResourceStr, _ = json.Marshal(resource)
-
 		testData[i] = resource
 	}
 
@@ -265,4 +258,56 @@ func generateResource(pid, id int, bigM bool) Resource {
 	}
 	res.Attributes = valHandler.ProcessDynamicMap(m)
 	return res
+}
+
+func generateLargeAttributes(targetBytes int) map[string]interface{} {
+	root := make(map[string]interface{})
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// helper to create a random string of length n
+	randStr := func(n int) string {
+		letters := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = letters[rnd.Intn(len(letters))]
+		}
+		return string(b)
+	}
+
+	// create many nested entries
+	total := 0
+	idx := 0
+	for total < targetBytes {
+		// create a nested map with several fields
+		level1 := fmt.Sprintf("node_%04d", idx)
+		nm := make(map[string]interface{})
+		nm["meta"] = map[string]interface{}{
+			"title":       fmt.Sprintf("Title %d", idx),
+			"description": randStr(1024), // 1KB
+			"tags":        []string{"big", "test", fmt.Sprintf("idx_%d", idx)},
+		}
+		// add a deep nested object
+		deep := make(map[string]interface{})
+		for j := 0; j < 3; j++ {
+			deep[fmt.Sprintf("deep_%d", j)] = map[string]interface{}{
+				"text": randStr(2048), // 2KB each
+				"num":  j,
+			}
+		}
+		nm["deep"] = deep
+
+		// add a large blob-like string to increase size
+		blobSize := 16*1024 + rnd.Intn(16*1024) // 16KB ~ 32KB
+		nm["blob"] = randStr(blobSize)
+
+		root[level1] = nm
+
+		total += len(level1) + 1024 + 3*(2048+10) + blobSize
+		idx++
+		// safety upper bound
+		if idx > 2000 {
+			break
+		}
+	}
+	return root
 }
