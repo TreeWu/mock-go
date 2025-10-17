@@ -19,27 +19,14 @@ var (
 	Operation_InsertTotal = "插入总耗时"
 )
 
-// 测试数据结构
-type User struct {
-	ID        int                    `json:"id" bson:"id"`     //索引
-	Name      string                 `json:"name" bson:"name"` //索引
-	Email     string                 `json:"email" bson:"email"`
-	Age       int                    `json:"age" bson:"age"`
-	City      string                 `json:"city" bson:"city"`
-	Salary    float64                `json:"salary" bson:"salary"`
-	CreatedAt time.Time              `json:"created_at" bson:"created_at"`
-	Tags      []string               `json:"tags" bson:"tags"`
-	Metadata  map[string]interface{} `json:"metadata" bson:"metadata"`
-	UserStr   []byte                 `json:"-" bson:"-"`
-}
-
 type Resource struct {
 	ResourceId   string                 `json:"resource_id" bson:"resource_id"`
 	ParentId     string                 `json:"parent_id" bson:"parent_id"`
 	Version      int                    `json:"version" bson:"version"`
 	Deleted      int                    `json:"deleted" bson:"deleted"`
 	Attributes   map[string]interface{} `json:"attributes" bson:"attributes"`
-	AttributeStr string                 `json:"-" bson:"-"`
+	AttributeStr []byte                 `json:"-" bson:"-"`
+	ResourceStr  []byte                 `json:"-"`
 }
 
 // 性能测试结果
