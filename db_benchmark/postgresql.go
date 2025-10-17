@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v4"
+	"golang.org/x/sync/errgroup"
 	"log"
 	"time"
 
@@ -28,34 +29,26 @@ func (p *PostgresqlEngine) Insert(data []Resource, batchSize int) []BenchmarkRes
 
 	var results []BenchmarkResult
 	start := time.Now()
+	group := errgroup.Group{}
+	group.SetLimit(6)
 
 	for i := 0; i < len(data); i += batchSize {
-		batchStart := time.Now()
 		batchEnd := min(i+batchSize, len(data))
 		batch := data[i:batchEnd]
 
 		// 使用 COPY 进行批量插入
-		err := p.BulkInsert(batch)
-		if err != nil {
-			log.Printf("PostgreSQL 批量插入失败: %v", err)
-			continue
-		}
-
-		batchDuration := time.Since(batchStart)
-		batchResult := BenchmarkResult{
-			Operation:  Operation_Insert,
-			Database:   p.Name(),
-			Duration:   batchDuration,
-			Records:    len(batch),
-			Throughput: float64(len(batch)) / batchDuration.Seconds(),
-		}
-		results = append(results, batchResult)
-
-		if i%1000 == 0 {
-			fmt.Printf("%s 已插入 %d 条记录\n", p.Name(), batchEnd)
-		}
+		group.Go(func() error {
+			log.Printf("%s 批量插入数据开始: %d 条记录", p.Name(), batchEnd)
+			return p.BulkInsert(batch)
+		})
 	}
 
+	err := group.Wait()
+	if err != nil {
+		log.Printf("%s 批量插入失败: %v", p.Name(), err)
+
+		return nil
+	}
 	totalDuration := time.Since(start)
 	totalResult := BenchmarkResult{
 		Operation:  Operation_InsertTotal,
@@ -140,12 +133,6 @@ func NewPostgresqlEngine(config *PostgresqlConfig) (*PostgresqlEngine, error) {
 		tableName: config.TableName,
 	}
 
-	// 创建表
-	if err := engine.createTable(); err != nil {
-		pool.Close()
-		return nil, err
-	}
-
 	return engine, nil
 }
 
@@ -201,7 +188,6 @@ func (p *PostgresqlEngine) BulkInsert(resources []Resource) error {
 	if err != nil {
 		return fmt.Errorf("开始事务失败: %v", err)
 	}
-	defer tx.Rollback(ctx)
 
 	// 使用 CopyFrom 进行批量插入
 	columnNames := []string{"resource_id", "parent_id", "version", "deleted", "attributes"}
@@ -223,22 +209,28 @@ func (p *PostgresqlEngine) BulkInsert(resources []Resource) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("COPY FROM 插入失败: %v", err)
+		tx.Rollback(ctx)
+		return fmt.Errorf("COPY FROM 失败: %w", err)
 	}
-
 	if copyCount != int64(len(resources)) {
-		return fmt.Errorf("插入记录数量不匹配: 期望 %d, 实际 %d", len(resources), copyCount)
+		tx.Rollback(ctx)
+		return fmt.Errorf("记录数不匹配: 期望 %d, 实际 %d", len(resources), copyCount)
 	}
 
-	// 提交事务
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("提交事务失败: %w", err)
+	}
+	return nil
 }
 
 // Search 执行搜索测试，多次执行取平均值
 func (p *PostgresqlEngine) Search(test []Resource) []BenchmarkResult {
 	var results []BenchmarkResult
 	ctx := context.Background()
-
+	var randStr []interface{}
+	for t := range test {
+		randStr = append(randStr, test[t].Attributes["rand_string"])
+	}
 	// 定义测试用例 - 与 Elasticsearch 保持一致
 	testCases := []struct {
 		name        string
@@ -292,6 +284,15 @@ func (p *PostgresqlEngine) Search(test []Resource) []BenchmarkResult {
 				return fmt.Sprintf(`SELECT COUNT(*)
 FROM %s 
 WHERE attributes->>'location' ILIKE $1`, p.tableName), []interface{}{"%project_root%"}
+			},
+		},
+
+		{
+			name:        "attributes.rand_string in 搜索",
+			description: "attributes.rand_string in 搜索",
+			queryFunc: func() (string, []interface{}) {
+				return fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE attributes->>'rand_string' =  ANY($1)", p.tableName),
+					[]interface{}{randStr}
 			},
 		},
 	}

@@ -14,16 +14,19 @@ import (
 )
 
 var (
-	totalRecords = 100000
-	batchSize    = 1000
-	sampleSize   = 10
-	bigMapCount  = 500000
+	totalRecords = 10
+	batchSize    = 1
+	sampleSize   = 1000
+	bigMapCount  = 300000
 	bigMap       map[string]interface{}
-	bigMapInsert = false
+	bigMapInsert = true
 	valHandler   = value.NewValueHandler()
 )
 
 func init() {
+	if !bigMapInsert {
+		return
+	}
 	bigMap = make(map[string]interface{})
 	for i := range bigMapCount {
 		bigMap[fmt.Sprintf("key%d", i)] = fmt.Sprintf("value%d", i)
@@ -74,7 +77,7 @@ func main() {
 		Username:    "", // 如果有认证
 		Password:    "", // 如果有认证
 		IndexName:   "users_benchmark",
-		WithRefresh: "false",
+		WithRefresh: "true",
 	})
 	pg, _ := NewPostgresqlEngine(&PostgresqlConfig{
 		Host:            "localhost",
@@ -96,28 +99,29 @@ func main() {
 	var engines []BenchmarkEngine
 
 	engines = append(engines,
-		es,
+		es, mongoDB, pg,
 	)
-
-	// 初始化所有引擎
-	for _, engine := range engines {
-		engine.Init()
-		defer engine.Close()
-	}
 
 	// 执行性能测试
 	var allResults []BenchmarkResult
 
 	for _, engine := range engines {
 		fmt.Printf("\n=== %s 测试 ===\n", engine.Name())
+		engine.Init()
 
 		engine.ClearData()
 
 		insertResults := engine.Insert(testData, batchSize)
 		allResults = append(allResults, insertResults...)
 
+		time.Sleep(10 * time.Second)
+
 		searchResults := engine.Search(searchTestData)
 		allResults = append(allResults, searchResults...)
+
+		engine.Close()
+
+		time.Sleep(10 * time.Second)
 	}
 
 	// 输出结果
@@ -268,6 +272,7 @@ func generateResource(pid, id int, bigM bool) Resource {
 	m["privilege"] = "@randString"
 	m["aggregato"] = "@randString"
 	m["ci_version"] = "@randString"
+	m["rand_string"] = "@randString"
 	if bigMapInsert {
 		m["bigmap"] = bigMap
 	}

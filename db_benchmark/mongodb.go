@@ -6,6 +6,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/sync/errgroup"
 	"log"
 	"time"
 )
@@ -73,45 +74,40 @@ func (m *MongoDB) Insert(data []Resource, batchSize int) []BenchmarkResult {
 
 	collection = m.client.Database(m.db).Collection(m.Collection)
 
+	group := errgroup.Group{}
+	group.SetLimit(6)
+
 	for i := 0; i < len(data); i += batchSize {
-		batchStart := time.Now()
 		batchEnd := min(i+batchSize, len(data))
 		batch := data[i:batchEnd]
 
-		// 将Resource转换为BSON文档
-		var documents []interface{}
-		for _, resource := range batch {
-			doc := bson.M{
-				"resource_id": resource.ResourceId,
-				"parent_id":   resource.ParentId,
-				"version":     resource.Version,
-				"deleted":     resource.Deleted,
-				"attributes":  resource.Attributes,
+		group.Go(func() error {
+			log.Printf("%s 批量插入数据开始: %d 条记录", m.Name(), batchEnd)
+
+			var documents []interface{}
+			for _, resource := range batch {
+				doc := bson.M{
+					"resource_id": resource.ResourceId,
+					"parent_id":   resource.ParentId,
+					"version":     resource.Version,
+					"deleted":     resource.Deleted,
+					"attributes":  resource.Attributes,
+				}
+				documents = append(documents, doc)
 			}
-			documents = append(documents, doc)
-		}
 
-		_, err := collection.InsertMany(context.Background(), documents)
-		if err != nil {
-			log.Printf("MongoDB 批量插入失败: %v", err)
-			continue
-		}
-
-		batchDuration := time.Since(batchStart)
-		batchResult := BenchmarkResult{
-			Operation:  Operation_Insert,
-			Database:   m.Name(),
-			Duration:   batchDuration,
-			Records:    batchEnd - i,
-			Throughput: float64(batchEnd-i) / batchDuration.Seconds(),
-		}
-		results = append(results, batchResult)
-
-		if i%batchSize == 0 {
-			fmt.Printf("%s 已插入 %d 条记录\n", m.Name(), batchEnd)
-		}
+			_, err := collection.InsertMany(context.Background(), documents)
+			if err != nil {
+				log.Printf("MongoDB 批量插入失败: %v", err)
+			}
+			return err
+		})
 	}
-
+	err = group.Wait()
+	if err != nil {
+		log.Printf("MongoDB 批量插入失败: %v", err)
+		return nil
+	}
 	totalDuration := time.Since(start)
 	totalResult := BenchmarkResult{
 		Operation:  Operation_InsertTotal,
@@ -138,6 +134,11 @@ func (m *MongoDB) ClearData() {
 func (m *MongoDB) Search(test []Resource) []BenchmarkResult {
 	var results []BenchmarkResult
 	collection := m.client.Database(m.db).Collection(m.Collection)
+
+	var randStr []string
+	for t := range test {
+		randStr = append(randStr, test[t].Attributes["rand_string"].(string))
+	}
 
 	searchTests := []struct {
 		name     string
@@ -182,6 +183,13 @@ func (m *MongoDB) Search(test []Resource) []BenchmarkResult {
 			name: "attributes.location like 搜索",
 			pipeline: []bson.D{
 				{{"$match", bson.D{{"attributes.location", bson.D{{"$regex", "project_root"}, {"$options", "i"}}}}}},
+				{{"$count", "total"}},
+			},
+		},
+		{
+			name: "attributes.rand_string in 搜索",
+			pipeline: []bson.D{
+				{{"$match", bson.D{{"attributes.rand_string", bson.D{{"$in", randStr}}}}}},
 				{{"$count", "total"}},
 			},
 		},

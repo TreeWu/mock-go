@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/elastic/go-elasticsearch/v7"
+	"golang.org/x/sync/errgroup"
 	"log"
 	"strings"
 	"time"
@@ -30,34 +31,24 @@ func (e *ElasticsearchEngine) Insert(data []Resource, batchSize int) []Benchmark
 
 	var results []BenchmarkResult
 	start := time.Now()
+	group := errgroup.Group{}
+	group.SetLimit(6)
 
 	for i := 0; i < len(data); i += batchSize {
-		batchStart := time.Now()
 		batchEnd := min(i+batchSize, len(data))
 		batch := data[i:batchEnd]
 
 		// 使用 Bulk API 进行批量插入
-		err := e.BulkInsert(batch)
-		if err != nil {
-			log.Printf("Elasticsearch 批量插入失败: %v", err)
-			continue
-		}
-
-		batchDuration := time.Since(batchStart)
-		batchResult := BenchmarkResult{
-			Operation:  Operation_Insert,
-			Database:   e.Name(),
-			Duration:   batchDuration,
-			Records:    len(batch),
-			Throughput: float64(len(batch)) / batchDuration.Seconds(),
-		}
-		results = append(results, batchResult)
-
-		if i%1000 == 0 {
-			fmt.Printf("%s 已插入 %d 条记录\n", e.Name(), batchEnd)
-		}
+		group.Go(func() error {
+			log.Printf("%s 批量插入数据开始: %d 条记录", e.Name(), batchEnd)
+			return e.BulkInsert(batch)
+		})
 	}
-
+	err := group.Wait()
+	if err != nil {
+		log.Printf("%s 批量插入数据失败: %v", e.Name(), err)
+		return nil
+	}
 	totalDuration := time.Since(start)
 	totalResult := BenchmarkResult{
 		Operation:  Operation_InsertTotal,
@@ -129,8 +120,6 @@ func NewElasticsearchEngine(config *ElasticsearchConfig) (*ElasticsearchEngine, 
 		indexName: config.IndexName,
 	}
 
-	// 创建索引
-	engine.createIndex()
 	return engine, nil
 }
 
@@ -154,24 +143,24 @@ func (e *ElasticsearchEngine) createIndex() {
 
 	// 索引映射配置
 	mapping := `{
-		"settings": {
-			"number_of_shards": 1,
-			"number_of_replicas": 0,
-			"refresh_interval": "1s"
-		},
-		"mappings": {
-			"properties": {
-				"resource_id": {"type": "keyword"},
-				"parent_id": {"type": "keyword"},
-				"version": {"type": "integer"},
-				"deleted": {"type": "integer"},
-				"attributes": {
-					"type": "object",
-					"dynamic": true
-				},
-			}
-		}
-	}`
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "1s"
+  },
+  "mappings": {
+    "properties": {
+      "resource_id": { "type": "keyword" },
+      "parent_id":   { "type": "keyword" },
+      "version":     { "type": "integer" },
+      "deleted":     { "type": "integer" },
+      "attributes": {
+        "type": "object",
+        "dynamic": true
+      }
+    }
+  }
+}`
 
 	req := esapi.IndicesCreateRequest{
 		Index: e.indexName,
@@ -249,6 +238,11 @@ func (e *ElasticsearchEngine) BulkInsert(resources []Resource) error {
 func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 	var results []BenchmarkResult
 
+	var randStr []string
+	for t := range test {
+		randStr = append(randStr, test[t].Attributes["rand_string"].(string))
+	}
+
 	// 定义测试用例
 	testCases := []struct {
 		name        string
@@ -325,6 +319,18 @@ func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 				},
 			},
 		},
+
+		{
+			name:        "attributes.rand_string in 搜索",
+			description: "attributes.rand_string in 搜索",
+			query: map[string]interface{}{
+				"query": map[string]interface{}{
+					"terms": map[string]interface{}{
+						"attributes.rand_string.keyword": randStr,
+					},
+				},
+			},
+		},
 	}
 
 	// 执行每个测试用例，多次执行取平均值
@@ -345,10 +351,9 @@ func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 				continue
 			}
 
-			res, err := e.client.Search(
-				e.client.Search.WithIndex(e.indexName),
-				e.client.Search.WithBody(strings.NewReader(string(queryJSON))),
-				e.client.Search.WithSize(1_000),
+			res, err := e.client.Count(
+				e.client.Count.WithIndex(e.indexName),
+				e.client.Count.WithBody(strings.NewReader(string(queryJSON))),
 			)
 
 			duration := time.Since(start)
@@ -369,12 +374,8 @@ func (e *ElasticsearchEngine) Search(test []Resource) []BenchmarkResult {
 
 			// 提取命中数量
 			var hitCount int
-			if hits, ok := searchResult["hits"].(map[string]interface{}); ok {
-				if total, ok := hits["total"].(map[string]interface{}); ok {
-					if value, ok := total["value"].(float64); ok {
-						hitCount = int(value)
-					}
-				}
+			if _, ok := searchResult["count"].(float64); ok {
+				hitCount = int(searchResult["count"].(float64))
 			}
 
 			totalDuration += duration
