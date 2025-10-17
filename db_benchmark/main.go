@@ -19,7 +19,7 @@ var (
 	sampleSize   = 1000
 	bigmapSize   = 10 * 1024 * 1024 // 10m
 	bigMap       map[string]interface{}
-	bigMapInsert = true
+	bigMapInsert = false
 	valHandler   = value.NewValueHandler()
 )
 
@@ -56,7 +56,7 @@ func main() {
 		Addresses:   []string{"http://localhost:9200"},
 		Username:    "", // 如果有认证
 		Password:    "", // 如果有认证
-		IndexName:   "users_benchmark",
+		IndexName:   "benchmark",
 		WithRefresh: "true",
 	})
 	pg, _ := NewPostgresqlEngine(&PostgresqlConfig{

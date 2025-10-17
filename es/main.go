@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"runtime/debug"
 	"time"
 
 	elastic "github.com/elastic/go-elasticsearch/v8"
@@ -24,7 +25,9 @@ type Resource struct {
 
 func must(err error) {
 	if err != nil {
+		debug.PrintStack()
 		log.Fatalf("error: %v", err)
+
 	}
 }
 
