@@ -33,7 +33,7 @@ func must(err error) {
 
 func newESClient() *elastic.Client {
 	cfg := elastic.Config{
-		Addresses: []string{getEnv("ES_URL", "http://127.0.0.1:9200")},
+		Addresses: []string{getEnv("ES_URL", "http://localhost:9200")},
 	}
 	if u := os.Getenv("ES_USERNAME"); u != "" {
 		cfg.Username = u

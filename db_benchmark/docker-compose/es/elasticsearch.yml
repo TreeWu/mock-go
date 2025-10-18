@@ -1,0 +1,20 @@
+# elasticsearch.yml
+cluster.name: "docker-cluster"
+network.host: 0.0.0.0
+
+# 跨域配置
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+http.cors.allow-methods: "OPTIONS, HEAD, GET, POST, PUT, DELETE"
+http.cors.allow-headers: "X-Requested-With, Content-Type, Content-Length, Authorization"
+http.cors.allow-credentials: true
+
+# 安全配置（禁用）
+xpack.security.enabled: false
+xpack.security.enrollment.enabled: false
+
+# 发现配置
+discovery.type: single-node
+
+# 内存配置
+bootstrap.memory_lock: true
