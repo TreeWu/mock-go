@@ -79,7 +79,7 @@ func main() {
 	var engines []BenchmarkEngine
 
 	engines = append(engines,
-		es, mongoDB, pg,
+		es,
 	)
 
 	// 执行性能测试
