@@ -9,3 +9,6 @@ sk-6529b87692e4b342d8838947fab936a05a8d9a86dea71427da0b9902aa69a4a0
 http://193.3.62.200/xtwin/v3/metaverse/v1/scenes
 
   https://github.com/PowerShell/PowerShell/releases/download/v7.7.0-preview.2/PowerShell-7.7.0-preview.2-win-x64.zip
+
+  https://github.com/farion1231/cc-switch/releases/download/v3.16.3/CC-Switch-v3.16.3-Windows.msi
+  https://github.com/PowerShell/PowerShell/releases/download/v7.6.2/PowerShell-7.6.2-win-x64.msi
