@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
 # Delete link resources and related relations from Elasticsearch.
-# Fill LINK_IDS before running. Keep DRY_RUN=true for the first check.
+# Configure the variables below before running. Keep DRY_RUN=true for the first check.
 #
 # Example:
-#   ES_URL=http://127.0.0.1:9200 ES_USER=elastic ES_PASS=xxxx bash delete_link_es.sh
-#   ES_URL=http://127.0.0.1:9200 ES_USER=elastic ES_PASS=xxxx DRY_RUN=false bash delete_link_es.sh
+#   bash delete_link_es.sh
 #
 # Notes:
 # - Resource deletion defaults to id.keyword because this ES index stores the
@@ -13,26 +12,28 @@
 # - Prefix deletion needs normal searchable keyword fields. Relation _id in this
 #   project is resource_id1->resource_id2, and this ES index can query the same
 #   business id from id.keyword.
-#  ES_URL=http://你的es地址:9200 ES_USER=账号 ES_PASS=密码 DRY_RUN=true bash delete_link_es.sh
-#  ES_URL=http://你的es地址:9200 ES_USER=账号 ES_PASS=密码 DRY_RUN=false bash delete_link_es.sh
 
 set -euo pipefail
 
-ES_URL="${ES_URL:-http://127.0.0.1:9200}"
-RESOURCES_INDEX="${RESOURCES_INDEX:-gj_xcmdb_resources}"
-RELATIONS_INDEX="${RELATIONS_INDEX:-gj_xcmdb_relations}"
+# Elasticsearch connection. If ES_USER/ES_PASS are empty, wget will not use auth.
+ES_URL="http://127.0.0.1:9200"
+ES_USER=""
+ES_PASS=""
+
+RESOURCES_INDEX="gj_xcmdb_resources"
+RELATIONS_INDEX="gj_xcmdb_relations"
 
 # Use .keyword for text fields. If id/resource_id1/resource_id2 are already
 # keyword fields, change these to "id", "resource_id1", and "resource_id2".
-RESOURCE_PREFIX_FIELD="${RESOURCE_PREFIX_FIELD:-id.keyword}"
-RELATION_PREFIX_FIELD="${RELATION_PREFIX_FIELD:-id.keyword}"
+RESOURCE_PREFIX_FIELD="id.keyword"
+RELATION_PREFIX_FIELD="id.keyword"
 
-RESOURCE_EXACT_FIELD="${RESOURCE_EXACT_FIELD:-id.keyword}"
-RESOURCE_ID1_FIELD="${RESOURCE_ID1_FIELD:-resource_id1.keyword}"
-RESOURCE_ID2_FIELD="${RESOURCE_ID2_FIELD:-resource_id2.keyword}"
+RESOURCE_EXACT_FIELD="id.keyword"
+RESOURCE_ID1_FIELD="resource_id1.keyword"
+RESOURCE_ID2_FIELD="resource_id2.keyword"
 
-DRY_RUN="${DRY_RUN:-true}"
-REFRESH="${REFRESH:-true}"
+DRY_RUN="true"
+REFRESH="true"
 
 # Change this to the subsystem/link ids that need to be deleted.
 LINK_IDS=(
@@ -44,13 +45,13 @@ if [[ "${#LINK_IDS[@]}" -eq 0 || "${LINK_IDS[0]}" == "replace_with_link_id" ]]; 
   exit 1
 fi
 
-if [[ -z "${ES_USER:-}" || -z "${ES_PASS:-}" ]]; then
-  echo 'This Elasticsearch requires authentication. Please set ES_USER and ES_PASS.'
-  exit 1
-fi
-
 WGET_AUTH_ARGS=()
-WGET_AUTH_ARGS+=(--user="$ES_USER" --password="$ES_PASS")
+if [[ -n "$ES_USER" ]]; then
+  WGET_AUTH_ARGS+=(--user="$ES_USER")
+  if [[ -n "$ES_PASS" ]]; then
+    WGET_AUTH_ARGS+=(--password="$ES_PASS")
+  fi
+fi
 
 es_request() {
   local method="$1"
