@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>图解Agent · 文章导航</title>
+  <style>
+    :root {
+      --ink: #172126;
+      --muted: #6c7b80;
+      --line: #d7e0e2;
+      --panel: #f7faf9;
+      --paper: #fffefb;
+      --accent: #d66b45;
+      --accent-soft: #f7e2d8;
+      --teal: #216d73;
+      --shadow: 0 14px 42px rgba(26, 47, 52, .12);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: #e9eff0;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+      overflow: hidden;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(286px, 338px) minmax(0, 1fr);
+      height: 100vh;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      color: #f4f8f7;
+      background: #16272b;
+      border-right: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    .brand {
+      padding: 28px 24px 22px;
+      border-bottom: 1px solid rgba(255, 255, 255, .1);
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: #efb092;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, p { margin: 0; }
+    .brand h1 {
+      font-family: Georgia, "Songti SC", serif;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.18;
+    }
+
+    .brand-copy {
+      margin-top: 12px;
+      color: #b6c7c8;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .search-wrap { padding: 16px 18px 10px; }
+    .search {
+      width: 100%;
+      padding: 11px 13px;
+      color: var(--ink);
+      background: #f5f8f7;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      outline: none;
+    }
+    .search:focus { border-color: #efb092; box-shadow: 0 0 0 3px rgba(239, 176, 146, .18); }
+    .count {
+      padding: 0 20px 10px;
+      color: #91a8aa;
+      font-size: 12px;
+    }
+
+    .article-list {
+      min-height: 0;
+      padding: 0 10px 18px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #49676a transparent;
+    }
+
+    .article-button {
+      display: block;
+      width: 100%;
+      padding: 13px 12px 13px 14px;
+      color: #d9e5e3;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-left: 3px solid transparent;
+      border-radius: 0 6px 6px 0;
+    }
+    .article-button:hover { background: rgba(255, 255, 255, .07); }
+    .article-button.active {
+      color: #fff;
+      background: rgba(214, 107, 69, .18);
+      border-left-color: var(--accent);
+    }
+    .article-number {
+      display: inline-block;
+      width: 28px;
+      color: #8ba4a5;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      vertical-align: top;
+    }
+    .article-button.active .article-number { color: #efb092; }
+    .article-title {
+      display: inline;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .reader {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      padding: 18px;
+    }
+
+    .reader-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .reader-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 76px;
+      padding: 14px 18px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .current-meta { min-width: 0; }
+    .current-kicker {
+      margin-bottom: 5px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .current-title {
+      max-width: 720px;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.4;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .controls { display: flex; gap: 8px; flex: 0 0 auto; }
+    .control {
+      width: 36px;
+      height: 36px;
+      color: var(--teal);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .control:hover:not(:disabled) { color: #fff; background: var(--teal); border-color: var(--teal); }
+    .control:disabled { cursor: not-allowed; opacity: .35; }
+
+    .reader-frame {
+      display: block;
+      width: 100%;
+      height: 100%;
+      flex: 1 1 auto;
+      border: 0;
+      background: #fff;
+    }
+
+    .empty {
+      padding: 28px 20px;
+      color: #a9b7b8;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .app { display: block; height: auto; min-height: 100vh; }
+      .sidebar { height: 43vh; min-height: 320px; }
+      .reader { height: 65vh; min-height: 520px; padding: 10px; }
+      .reader-bar { min-height: 72px; padding: 12px; }
+      .current-title { max-width: 46vw; white-space: normal; }
+      .brand { padding: 20px 18px 16px; }
+      .brand h1 { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="文章导航">
+      <header class="brand">
+        <p class="eyebrow">Offline Reading Desk</p>
+        <h1>图解Agent</h1>
+        <p class="brand-copy">22 篇文章 · 单页导航阅读<br>内容和图片均来自本地归档</p>
+      </header>
+      <div class="search-wrap">
+        <input id="search" class="search" type="search" placeholder="搜索标题" aria-label="搜索文章标题">
+      </div>
+      <p id="count" class="count"></p>
+      <nav id="article-list" class="article-list" aria-label="文章列表"></nav>
+    </aside>
+
+    <main class="reader">
+      <section class="reader-shell" aria-label="文章阅读区">
+        <header class="reader-bar">
+          <div class="current-meta">
+            <p id="current-kicker" class="current-kicker"></p>
+            <h2 id="current-title" class="current-title"></h2>
+          </div>
+          <div class="controls" aria-label="文章切换">
+            <button id="prev" class="control" type="button" title="上一篇" aria-label="上一篇">←</button>
+            <button id="next" class="control" type="button" title="下一篇" aria-label="下一篇">→</button>
+          </div>
+        </header>
+        <iframe id="reader-frame" class="reader-frame" title="文章内容"></iframe>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const articles = [{"position":1,"title":"字节面试官：“全网都在吹的 OpenClaw 了解吗？”，我：“不了解”，今天面试到此结束。。","file":"01-2247555334.html","date":"2026年3月25日 11:42","author":"小林coding"},{"position":2,"title":"腾讯面试官：“Agent 不就是 LLM 加点工具？”，我：“ReAct、MCP、Skills、Function Call、A2A ……”","file":"02-2247555560.html","date":"2026年3月29日 15:36","author":"小林coding"},{"position":3,"title":"面试官：“简历写着用过 Claude Code，那源码看过吗？”，我怼回去：“没看过，又能怎？”","file":"03-2247556000.html","date":"2026年4月6日 15:36","author":"小林coding"},{"position":4,"title":"字节面试官：“RAG 不就是给大模型挂个知识库？”，我：“文档切分、向量检索、多路召回、Re-rank、RAG 评估、幻觉抑制……”","file":"04-2247556244.html","date":"2026年4月13日 14:06","author":"小林coding"},{"position":5,"title":"鹅厂面试官：“你怎么看 Harness Engineering？” 我：“就是给大模型套缰绳” 他拍桌：终于有人说明白了","file":"05-2247556454.html","date":"2026年4月15日 10:47","author":"小林coding"},{"position":6,"title":"字节二面，我霸气反问：“别光吹RAG，说说GraphRAG的多跳推理，你们线上跑通了吗”，面试官一直在擦汗。。","file":"06-2247556634.html","date":"2026年4月22日 14:12","author":"小林coding"},{"position":7,"title":"面试官皱眉：“你知道 Claude Code 多Agent实现机制吗？” 我：“何止知道？我还看过源码”，他愣了…","file":"07-2247557309.html","date":"2026年5月9日 15:26","author":"小林coding"},{"position":8,"title":"字节面试官：“为什么Claude Code不用RAG检索代码，而是用grep？”我：\"因为...省钱?\" 他沉默了三秒","file":"08-2247557512.html","date":"2026年5月16日 15:26","author":"小林coding"},{"position":9,"title":"面试官皱眉：“你知道 Claude Code 的上下文窗口管理吗？”我：“何止知道？我还看过源码”，他愣了…","file":"09-2247557638.html","date":"2026年5月18日 14:12","author":"小林coding"},{"position":10,"title":"面试官皱眉：“Claude Code 你用了半年，CLAUDE.md 平时怎么维护？”我：“呃...没用过”，他：你牛逼","file":"10-2247557733.html","date":"2026年5月20日 14:12","author":"小林coding"},{"position":11,"title":"面试官皱眉：“公司项目几百万行代码，Claude Code 怎么扛得住？”我：“换 Opus 4.7”，他叹气：模型是地板，harness 才是天花板","file":"11-2247557838.html","date":"2026年5月22日 14:12","author":"小林coding"},{"position":12,"title":"面试官皱眉：“你知道 Claude Code 记忆机制吗？” 我：“何止知道？我还看过源码”，他又愣了…","file":"12-2247558299.html","date":"2026年6月2日 14:12","author":"小林coding"},{"position":13,"title":"面试官皱眉：“你懂 Claude Code 主循环 Query 流程吗？” 我说：“就是一个 while 循环，调模型、跑工具、再调模型”，他：就这？？","file":"13-2247558351.html","date":"2026年6月3日 16:36","author":"小林coding"},{"position":14,"title":"面试官坏笑：“你怎么看 Loop Engineering？”我反问：“不就是 /loop 吗？让 Agent 循环干活”，他摇了摇头...","file":"14-2247558717.html","date":"2026年6月14日 15:36","author":"小林coding"},{"position":15,"title":"面试官皱眉：“Claude Code 你用了半年，你懂 Skills 吗？”我反问：“不就是写了步骤的 markdown 吗”，他：今天就到这吧","file":"15-2247558967.html","date":"2026年6月18日 14:12","author":"小林coding"},{"position":16,"title":"面试官皱眉：“你看过 Claude Fable 5 系统提示词吗？”，我笑了：“刚看过，需要向我请教什么？”，他：“来，开始你的表演”","file":"16-2247559033.html","date":"2026年6月21日 15:42","author":"小林coding"},{"position":17,"title":"面试官皱眉：“你做过 Loop Engineering 吗？”，我笑了：“刚刷完实操手册，你随便问”，他：“offer给你，你来公司跟我细聊！”","file":"17-2247559092.html","date":"2026年6月24日 19:26","author":"小林coding"},{"position":18,"title":"面试官皱眉：“你知道 Claude Code 的 skill 机制吗？” 我：“何止知道？我还看过源码”，他又愣了…","file":"18-2247560206.html","date":"2026年7月21日 14:12","author":"小林coding"},{"position":19,"title":"Loop Engineering 已死，Graph Engineering 永生","file":"19-2247560325.html","date":"2026年7月24日 15:26","author":"小林coding"},{"position":20,"title":"面试官皱眉：“你懂 Claude Code？” 我笑了：“何止懂？CLAUDE.md、Skills、Subagents、MCP、Hooks、Plugins样样都懂”","file":"20-2247560334.html","date":"2026年7月28日 14:12","author":"小林coding"},{"position":21,"title":"面试官皱眉：“你看过 Claude Opus 5 系统提示词吗？”，我笑了：“刚看过，需要向我请教什么？”，他：“来，开始你的表演”","file":"21-2247560495.html","date":"2026年8月5日 16:06","author":"小林coding"},{"position":22,"title":"面试官皱眉：“你用过 Codex？” 我笑了：“何止用过？AGENTS.md、Skills、Subagents、MCP、Hooks 样样都懂","file":"22-2247560541.html","date":"2026年8月7日 17:25","author":"小林coding"}];
+
+    const list = document.getElementById('article-list');
+    const search = document.getElementById('search');
+    const count = document.getElementById('count');
+    const frame = document.getElementById('reader-frame');
+    const currentKicker = document.getElementById('current-kicker');
+    const currentTitle = document.getElementById('current-title');
+    const prev = document.getElementById('prev');
+    const next = document.getElementById('next');
+    let currentPosition = 22;
+
+    function getPositionFromHash() {
+      const value = Number.parseInt(location.hash.replace('#article-', ''), 10);
+      return Number.isInteger(value) && value >= 1 && value <= articles.length ? value : 22;
+    }
+
+    function renderList() {
+      const query = search.value.trim().toLowerCase();
+      const visible = articles.filter(article => article.title.toLowerCase().includes(query));
+      count.textContent = query ? `${visible.length} / ${articles.length} 篇` : `${articles.length} 篇内容 · 连载中`;
+      list.innerHTML = '';
+      if (!visible.length) {
+        list.innerHTML = '<p class="empty">没有匹配的文章</p>';
+        return;
+      }
+      visible.forEach(article => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `article-button${article.position === currentPosition ? ' active' : ''}`;
+        button.dataset.position = article.position;
+        button.innerHTML = `<span class="article-number">${String(article.position).padStart(2, '0')}</span><span class="article-title"></span>`;
+        button.querySelector('.article-title').textContent = article.title;
+        button.addEventListener('click', () => openArticle(article.position));
+        list.appendChild(button);
+      });
+    }
+
+    function openArticle(position, updateHash = true) {
+      const article = articles.find(item => item.position === position) || articles[articles.length - 1];
+      currentPosition = article.position;
+      frame.src = article.file;
+      currentKicker.textContent = `${String(article.position).padStart(2, '0')} / ${String(articles.length).padStart(2, '0')} · ${article.date}`;
+      currentTitle.textContent = article.title;
+      prev.disabled = article.position === 1;
+      next.disabled = article.position === articles.length;
+      if (updateHash) history.replaceState(null, '', `#article-${article.position}`);
+      renderList();
+    }
+
+    search.addEventListener('input', renderList);
+    prev.addEventListener('click', () => openArticle(currentPosition - 1));
+    next.addEventListener('click', () => openArticle(currentPosition + 1));
+    window.addEventListener('hashchange', () => openArticle(getPositionFromHash(), false));
+    openArticle(getPositionFromHash(), false);
+  </script>
+</body>
+</html>

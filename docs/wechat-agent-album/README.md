@@ -2,6 +2,8 @@
 
 本目录保存微信公众号「图解Agent」（作者：小林coding）文章合集的离线副本。
 
+打开 `index.html` 进入单页导航阅读器：左侧搜索和选择文章，右侧在同一个阅读区切换内容，不会为每篇文章打开新的网页。
+
 - 来源合集：<https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzUxODAzNDg4NQ==&action=getalbum&album_id=4404340926102421504&scene=21#wechat_redirect>
 - 文章数量：22 篇
 - 正文：每篇一个 HTML 文件，按合集编号和微信消息 ID 命名
