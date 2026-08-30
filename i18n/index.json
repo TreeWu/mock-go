@@ -1,0 +1,18 @@
+{
+  "title": "无代码平台国际化多语言（i18n）全景方案设计",
+  "author": "AI陈旭元",
+  "publishedAt": "2025年9月11日 12:19",
+  "sourceUrl": "https://mp.weixin.qq.com/s/0zuDwGgIyfqLXH_eYp_hZA",
+  "archivedAt": "2026-08-30",
+  "articleFile": "index.html",
+  "textLength": 21639,
+  "sourceHtmlLength": 81247,
+  "imageCount": 1,
+  "images": [
+    {
+      "file": "images/article-image-01.jpg",
+      "source": "https://mmbiz.qpic.cn/mmbiz_jpg/svBfBgTdRsrib4K3T5jMr1NfDiciayPds94ME0goHRGARMtXFjGel0iaFqvpRIl7vEY8RicmeNVZQafnVKswep1kr5w/640?wx_fmt=other&from=appmsg&watermark=1",
+      "alt": "一个典型的列扩展数据库设计，为每种语言（如英语En和土耳其语Tr）设置单独的列，这种方法缺乏可扩展性"
+    }
+  ]
+}
