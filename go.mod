@@ -8,8 +8,11 @@ require (
 	github.com/elastic/go-elasticsearch/v8 v8.19.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/jackc/pgx/v4 v4.18.3
+	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	go.mongodb.org/mongo-driver v1.17.4
-	golang.org/x/crypto v0.40.0
+	golang.org/x/crypto v0.44.0
+	golang.org/x/sync v0.19.0
+	golang.org/x/text v0.32.0
 )
 
 require (
@@ -57,11 +60,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	golang.org/x/arch v0.20.0 // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 )
